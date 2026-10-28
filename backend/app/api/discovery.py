@@ -1,10 +1,13 @@
 """
 Day 4 — Trade Discovery & Market Intelligence API Router
+Day 5 — Domain Enrichment API Router
+
 Endpoints:
   POST /api/v1/discover/comtrade           — Query UN Comtrade for top import markets
   POST /api/v1/discover/apeda             — Ingest APEDA directory rows
   POST /api/v1/discover/itp              — Ingest Indian Trade Portal leads
   POST /api/v1/discover/verify-website   — Ethical company website alive check
+  POST /api/v1/discover/enrich-domain    — Full DNS/TLS/WHOIS/contact-page enrichment
 """
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,6 +26,7 @@ from app.services.trade_connectors import (
     PublicWebConnector,
     DiscoveredLead,
 )
+from app.services.domain_enrichment import enrich_domain
 
 router = APIRouter(prefix="/discover", tags=["Trade Discovery & Market Intelligence"])
 
@@ -270,3 +274,117 @@ def verify_company_website(req: WebsiteVerifyRequest):
     }
 
     return response
+
+
+
+# ─────────────────────────────────────────────
+# ENDPOINT 5 — Full Domain Enrichment
+# ─────────────────────────────────────────────
+
+class DomainEnrichRequest(BaseModel):
+    domain_or_url: str = Field(
+        ...,
+        description="Domain, URL, or email to enrich (e.g. 'acme.de', 'https://acme.de', 'buyer@acme.de')"
+    )
+    lead_id: Optional[str] = Field(
+        None,
+        description="If provided, apply score deltas and new flags to this lead record"
+    )
+    run_smtp: bool = Field(True, description="Attempt SMTP EHLO probe on MX server")
+    run_whois: bool = Field(True, description="Run WHOIS domain age lookup")
+    run_contact_page: bool = Field(True, description="Scan company contact/about page")
+
+
+@router.post("/enrich-domain")
+def enrich_company_domain(
+    req: DomainEnrichRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Run full technical domain enrichment:
+      1. DNS MX lookup — confirms mail infrastructure exists
+      2. SMTP EHLO probe — verifies mail server is live (port 25, no email sent)
+      3. TLS/SSL certificate check — validity and days-to-expiry
+      4. WHOIS domain age — flags domains < 90 days old
+      5. Contact page scan — extracts contact links, LinkedIn URL, emails, addresses
+
+    If lead_id is supplied, score deltas and new flags are applied to that lead's
+    verification record.  The lead's buyer_score is recalculated accordingly.
+
+    PRD guarantee: no fabricated data is stored.  All findings are labelled
+    as 'automated evidence' with timestamps.
+    """
+    result = enrich_domain(
+        domain_or_url=req.domain_or_url,
+        run_smtp=req.run_smtp,
+        run_whois=req.run_whois,
+        run_contact=req.run_contact_page,
+    )
+    result_dict = result.to_dict()
+
+    applied_to_lead: Optional[dict] = None
+
+    if req.lead_id:
+        from app.models.lead import Lead
+        lead = db.query(Lead).filter(Lead.lead_id == req.lead_id).first()
+        if not lead:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Lead {req.lead_id} not found"
+            )
+
+        # Apply score deltas to the existing buyer_score (clamped 0–100)
+        new_score = lead.buyer_score or 0.0
+        new_score += result.email_score_delta
+        new_score += result.website_score_delta
+        new_score += result.independent_score_delta
+        new_score = round(max(0.0, min(100.0, new_score)), 1)
+
+        # Merge new flags into existing risk flags
+        existing_flags: list = list(lead.risk_flags or [])
+        for flag in result.new_flags:
+            if flag not in existing_flags:
+                existing_flags.append(flag)
+
+        # Update verification status based on new score
+        from datetime import datetime, timezone
+        if new_score >= 80.0 and "FLAG_FREE_EMAIL_DOMAIN" not in existing_flags:
+            new_status = "Verified"
+        elif new_score >= 60.0:
+            new_status = "Partially Verified"
+        else:
+            new_status = "Unverified"
+
+        lead.buyer_score = new_score
+        lead.risk_flags = existing_flags
+        lead.verification_status = new_status
+        lead.last_verified = datetime.now(timezone.utc)
+
+        # Append enrichment evidence to notes
+        evidence_summary = " | ".join(result.evidence_notes[:5])
+        if lead.notes:
+            lead.notes = f"{lead.notes}\n[Day5 Enrichment] {evidence_summary}"
+        else:
+            lead.notes = f"[Day5 Enrichment] {evidence_summary}"
+
+        db.commit()
+        db.refresh(lead)
+
+        applied_to_lead = {
+            "lead_id": lead.lead_id,
+            "company_name": lead.company_name,
+            "new_buyer_score": new_score,
+            "new_verification_status": new_status,
+            "new_risk_flags": existing_flags,
+        }
+
+    return {
+        "domain": result.domain,
+        "enrichment": result_dict,
+        "applied_to_lead": applied_to_lead,
+        "disclaimer": (
+            "All findings are automated technical checks. "
+            "A passing check is a positive signal, not a guarantee of buyer legitimacy. "
+            "A failing check is evidence for human review, not automatic disqualification."
+        ),
+    }

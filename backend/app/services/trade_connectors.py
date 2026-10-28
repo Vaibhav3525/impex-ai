@@ -370,3 +370,4 @@ class PublicWebConnector:
             return {"alive": False, "error": "Connection refused / DNS failure", "https": False}
         except Exception as exc:
             return {"alive": False, "error": str(exc)[:200], "https": False}
+

@@ -294,3 +294,4 @@ def test_ingest_discovered_dedup():
         assert result2["created"] == 0
     finally:
         db.close()
+

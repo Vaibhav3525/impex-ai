@@ -178,3 +178,4 @@ def parse_json_bytes(content: bytes) -> list[dict]:
             if key in data and isinstance(data[key], list):
                 return data[key]
     raise ValueError("JSON must be a list of objects or a dict with a 'leads' (or 'records') list key")
+
