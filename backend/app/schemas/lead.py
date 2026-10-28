@@ -32,6 +32,8 @@ class LeadUpdate(BaseModel):
     phone_number: Optional[str] = None
     verification_status: Optional[str] = None
     buyer_score: Optional[float] = None
+    payment_risk_score: Optional[float] = None
+    risk_level: Optional[str] = None
     risk_flags: Optional[List[str]] = None
     outreach_status: Optional[str] = None
     pipeline_stage: Optional[str] = None
@@ -42,7 +44,9 @@ class LeadResponse(LeadBase):
     lead_id: str
     verification_status: str
     buyer_score: float
-    risk_flags: List[str]
+    payment_risk_score: float = 0.0
+    risk_level: str = "LOW"
+    risk_flags: List[str] = Field(default_factory=list)
     last_verified: Optional[datetime] = None
     outreach_status: str
     pipeline_stage: str
@@ -101,3 +105,24 @@ class VerificationLogResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class RiskSignal(BaseModel):
+    flag: str
+    severity: str # CRITICAL | HIGH | MEDIUM | LOW
+    points: float
+    description: str
+    evidence: str
+
+class RiskAssessmentResponse(BaseModel):
+    lead_id: str
+    company_name: str
+    country: str
+    buyer_score: float # Commercial qualification score
+    payment_risk_score: float # Distinct payment risk score (0-100)
+    risk_level: str # LOW | MEDIUM | HIGH | CRITICAL
+    detected_signals: List[RiskSignal]
+    requires_human_approval: bool
+    is_safe_for_automated_outreach: bool
+    summary: str
+    recommended_mitigation: str
+    assessed_at: datetime

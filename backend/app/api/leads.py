@@ -1,14 +1,17 @@
 """
-Day 2 & Day 7 — Buyer Leads & 100-Point Verification Engine API Router
+Day 2, Day 7, Day 8 — Buyer Leads, 100-Point Verification, & Payment Risk Guardian API
 Endpoints:
   GET    /api/v1/leads                     — Paginated listing with multi-criteria filtering
   POST   /api/v1/leads                     — Ingest new lead with deduplication
   GET    /api/v1/leads/review-queue        — PRD §4: Manual review queue for uncertain/flagged cases
+  GET    /api/v1/leads/high-risk           — PRD §11: High & Critical payment risk monitor
   POST   /api/v1/leads/verify-batch        — PRD §5: High-throughput batch verification (up to 500/day)
   GET    /api/v1/leads/{lead_id}           — Fetch single lead by Lead ID
   POST   /api/v1/leads/{lead_id}/verify    — Trigger 100-point automated audit
   POST   /api/v1/leads/{lead_id}/verify-manual — Human reviewer override with full audit trail
   GET    /api/v1/leads/{lead_id}/audit-trail   — Complete verification history & evidence logs
+  POST   /api/v1/leads/{lead_id}/risk-assessment — Run payment fraud and risk assessment
+  GET    /api/v1/leads/{lead_id}/risk-assessment — Retrieve latest risk assessment
 """
 
 from datetime import datetime, timezone
@@ -29,9 +32,14 @@ from app.schemas.lead import (
     BatchVerifyRequest,
     BatchVerifyResponse,
     VerificationLogResponse,
+    RiskAssessmentResponse,
 )
 from app.services.lead_service import ingest_lead
 from app.services.verification_service import run_lead_verification
+from app.services.risk_service import (
+    evaluate_lead_payment_risk,
+    audit_and_save_lead_risk,
+)
 
 router = APIRouter(prefix="/leads", tags=["Buyer Leads & Verification"])
 
@@ -121,6 +129,33 @@ def get_manual_review_queue(
             )
         )
         .order_by(desc(Lead.created_at))
+        .limit(limit)
+        .all()
+    )
+    return leads
+
+
+@router.get("/high-risk", response_model=List[LeadResponse])
+def get_high_risk_leads(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """
+    PRD §11: High & Critical Payment Risk Monitor.
+    Retrieves all leads classified with HIGH or CRITICAL risk level,
+    or with payment_risk_score >= 40.0.
+    These buyers must never receive automated outreach without human authorization.
+    """
+    leads = (
+        db.query(Lead)
+        .filter(
+            or_(
+                Lead.risk_level == "CRITICAL",
+                Lead.risk_level == "HIGH",
+                Lead.payment_risk_score >= 40.0,
+            )
+        )
+        .order_by(desc(Lead.payment_risk_score), desc(Lead.created_at))
         .limit(limit)
         .all()
     )
@@ -325,3 +360,40 @@ def get_lead_audit_trail(lead_id: str, db: Session = Depends(get_db)):
         .all()
     )
     return logs
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Payment Risk Guardian Endpoints (Day 8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/{lead_id}/risk-assessment", response_model=RiskAssessmentResponse)
+def evaluate_and_persist_risk(
+    lead_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    PRD §11: Evaluates payment fraud indicators, advance-fee scam signals,
+    country/website inconsistencies, and assigns dedicated payment_risk_score.
+    Persists risk assessment to database.
+    """
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead with ID {lead_id} not found")
+
+    return audit_and_save_lead_risk(db, lead)
+
+
+@router.get("/{lead_id}/risk-assessment", response_model=RiskAssessmentResponse)
+def get_lead_risk_assessment(
+    lead_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieves the comprehensive payment risk assessment for a specific buyer.
+    Evaluates current risk state without persisting changes.
+    """
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead with ID {lead_id} not found")
+
+    return evaluate_lead_payment_risk(lead)

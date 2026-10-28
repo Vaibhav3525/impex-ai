@@ -35,6 +35,10 @@ class Lead(Base):
     risk_flags = Column(JSON, default=list) # Array of risk flags
     last_verified = Column(DateTime, nullable=True)
     
+    # Day 8: Dedicated Payment Risk Fields (Strict separation: Qualification Score != Payment Risk Score)
+    payment_risk_score = Column(Float, default=0.0, index=True) # 0.0 (Clean/Safe) to 100.0 (Critical Risk)
+    risk_level = Column(String(20), default="LOW", index=True)   # LOW, MEDIUM, HIGH, CRITICAL
+
     # Outreach & Pipeline Status
     outreach_status = Column(String(50), default="Not Contacted", index=True) # Not Contacted, Queued, Sent, Replied, Suppressed
     pipeline_stage = Column(String(50), default="Discovered", index=True) # 15 stages
@@ -51,5 +55,5 @@ class Lead(Base):
     __table_args__ = (
         Index("idx_lead_country_product", "country", "product_category"),
         Index("idx_lead_score_status", "buyer_score", "verification_status"),
+        Index("idx_lead_risk_level", "risk_level", "payment_risk_score"),
     )
-
