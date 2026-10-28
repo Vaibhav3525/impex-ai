@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field
 
 class LeadBase(BaseModel):
@@ -58,3 +58,46 @@ class LeadPagination(BaseModel):
     page_size: int
     items: List[LeadResponse]
 
+class ManualVerificationRequest(BaseModel):
+    reviewer_name: str = Field(..., description="Name or identifier of the compliance officer / human reviewer")
+    status_override: Optional[str] = Field(None, description="Override status: 'Verified', 'Partially Verified', 'Rejected', or 'Unverified'")
+    notes: str = Field(..., description="Factual audit justification for the manual verification change")
+    cleared_flags: Optional[List[str]] = Field(default_factory=list, description="Risk flags cleared after human investigation")
+    added_flags: Optional[List[str]] = Field(default_factory=list, description="New risk flags identified during manual review")
+    score_adjustment: Optional[float] = Field(None, description="Direct adjustment to buyer_score (-50.0 to +50.0)")
+
+class BatchVerifyRequest(BaseModel):
+    limit: int = Field(50, ge=1, le=500, description="Maximum number of leads to verify in this batch")
+    only_unverified: bool = Field(True, description="Only process leads with status 'Unverified'")
+    run_live_checks: bool = Field(False, description="Perform live DNS/TLS socket probes (slower)")
+
+class BatchVerifyResponse(BaseModel):
+    total_processed: int
+    verified_count: int
+    partially_verified_count: int
+    unverified_count: int
+    average_score: float
+    results: List[Dict[str, Any]]
+
+class VerificationLogResponse(BaseModel):
+    id: int
+    lead_id: str
+    identity_score: float
+    relevance_score: float
+    website_score: float
+    email_score: float
+    import_evidence_score: float
+    independent_score: float
+    total_score: float
+    dns_mx_records: Optional[List[str]] = None
+    smtp_check_result: Optional[str] = None
+    http_status: Optional[int] = None
+    ssl_valid: Optional[str] = None
+    domain_age_days: Optional[int] = None
+    risk_level: str
+    detected_flags: List[str]
+    verified_by: str
+    evidence_summary: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
