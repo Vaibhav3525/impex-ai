@@ -27,6 +27,9 @@ from app.services.trade_connectors import (
     DiscoveredLead,
 )
 from app.services.domain_enrichment import enrich_domain
+from app.services.lead_discovery_crawler import LeadDiscoveryCrawler
+from app.services.embassy_directory_connector import EmbassyDirectoryConnector
+from app.services.linkedin_dork_service import LinkedInDorkService
 
 router = APIRouter(prefix="/discover", tags=["Trade Discovery & Market Intelligence"])
 
@@ -54,6 +57,26 @@ class ITPIngestRequest(BaseModel):
 class WebsiteVerifyRequest(BaseModel):
     url: str = Field(..., description="Company website URL to probe")
     company_name: Optional[str] = None
+
+class AutonomousSearchRequest(BaseModel):
+    commodity: str = Field(..., description="Commodity or product line to search (e.g. 'Basmati Rice', 'Spices')")
+    country: Optional[str] = Field("All", description="Target country or 'All'")
+    sources: list[str] = Field(["directories", "embassy", "web"], description="Sources to query")
+    limit: int = Field(25, ge=1, le=100)
+    auto_ingest: bool = Field(True, description="Automatically ingest discovered leads into database")
+    auto_verify: bool = Field(True, description="Run 100-point verification engine on ingested leads")
+
+class EmbassySearchRequest(BaseModel):
+    country: Optional[str] = Field("All", description="Target market country or 'All'")
+    commodity: Optional[str] = Field(None, description="Optional commodity filter")
+    auto_ingest: bool = Field(True, description="Ingest discovered leads into database")
+    auto_verify: bool = Field(True, description="Run 100-point verification")
+
+class LinkedInDorkRequest(BaseModel):
+    commodity: str = Field(..., description="Export commodity or product line")
+    country: str = Field(..., description="Target buyer market country")
+    roles: Optional[list[str]] = Field(None, description="Custom buyer roles to target")
+
 
 
 def _discovered_lead_to_create(dl: DiscoveredLead) -> LeadCreate:
@@ -388,3 +411,132 @@ def enrich_company_domain(
             "A failing check is evidence for human review, not automatic disqualification."
         ),
     }
+
+
+# ─────────────────────────────────────────────
+# ENDPOINT 6 — Autonomous Lead Discovery Engine
+# ─────────────────────────────────────────────
+
+@router.post("/autonomous-search")
+def run_autonomous_lead_discovery(
+    req: AutonomousSearchRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    PRD §3: Complete Autonomous Lead Generation Engine.
+    Discovers candidate international buyers matching a commodity and target country across:
+      1. Verified Global Importers Registry & Business Chambers
+      2. Indian Embassy & MEA Commercial Mission Registries
+      3. Public Corporate Web Directory Crawling
+    Automatically validates structure, deduplicates via SHA-256, and runs 100-point verification.
+    """
+    discovered_leads: list[DiscoveredLead] = []
+
+    # 1. Query Embassy Directories if requested
+    if "embassy" in req.sources or "all" in req.sources:
+        embassy_connector = EmbassyDirectoryConnector()
+        c_filter = None if req.country == "All" else req.country
+        emb_leads = embassy_connector.fetch_embassy_leads(country=c_filter, commodity=req.commodity)
+        discovered_leads.extend(emb_leads)
+
+    # 2. Query Autonomous Web Crawler & Global Importers Registry
+    if "directories" in req.sources or "web" in req.sources or "all" in req.sources:
+        crawler = LeadDiscoveryCrawler()
+        c_filter = None if req.country == "All" else req.country
+        crawl_leads = crawler.search_and_discover(
+            commodity=req.commodity,
+            country=c_filter,
+            limit=req.limit
+        )
+        discovered_leads.extend(crawl_leads)
+
+    # Deduplicate in memory before ingestion
+    seen_keys = set()
+    unique_discovered = []
+    for dl in discovered_leads:
+        key = (dl.company_name.lower().strip(), dl.country.lower().strip())
+        if key not in seen_keys:
+            seen_keys.add(key)
+            unique_discovered.append(dl)
+
+    limited_discovered = unique_discovered[:req.limit]
+
+    # Ingest and verify if enabled
+    ingest_summary = {}
+    if req.auto_ingest:
+        ingest_summary = _ingest_discovered(limited_discovered, req.auto_verify, db)
+
+    return {
+        "commodity": req.commodity,
+        "country": req.country,
+        "total_discovered": len(limited_discovered),
+        "created_new_leads": ingest_summary.get("created", 0),
+        "duplicate_leads_updated": ingest_summary.get("duplicates", 0),
+        "ingested_lead_ids": ingest_summary.get("lead_ids", []),
+        "leads": [
+            {
+                "company_name": l.company_name,
+                "country": l.country,
+                "city": l.city,
+                "website": l.website,
+                "product_category": l.product_category,
+                "contact_name": l.contact_name,
+                "job_title": l.job_title,
+                "business_email": l.business_email,
+                "phone_number": l.phone_number,
+                "source": l.source,
+                "source_url": l.source_url,
+                "import_evidence": l.import_evidence
+            }
+            for l in limited_discovered
+        ]
+    }
+
+
+# ─────────────────────────────────────────────
+# ENDPOINT 7 — Indian Embassy Commercial Registries
+# ─────────────────────────────────────────────
+
+@router.post("/embassy-directories")
+def search_embassy_directories(
+    req: EmbassySearchRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieves verified international buyers officially published by Indian Diplomatic Missions abroad.
+    """
+    connector = EmbassyDirectoryConnector()
+    c_filter = None if req.country == "All" else req.country
+    leads = connector.fetch_embassy_leads(country=c_filter, commodity=req.commodity)
+
+    ingest_summary = {}
+    if req.auto_ingest and leads:
+        ingest_summary = _ingest_discovered(leads, req.auto_verify, db)
+
+    return {
+        "total_leads_found": len(leads),
+        "created": ingest_summary.get("created", 0),
+        "duplicates": ingest_summary.get("duplicates", 0),
+        "leads": leads
+    }
+
+
+# ─────────────────────────────────────────────
+# ENDPOINT 8 — LinkedIn Persona & X-Ray Search Engine
+# ─────────────────────────────────────────────
+
+@router.post("/linkedin-personas")
+def generate_linkedin_xray_queries(req: LinkedInDorkRequest):
+    """
+    PRD §3.D: Lawfully generates targeted Google X-Ray search queries to identify
+    specific buyer decision-makers (Import Managers, Procurement Directors)
+    without unauthorized platform scraping or account bans.
+    """
+    service = LinkedInDorkService()
+    result = service.generate_xray_queries(
+        commodity=req.commodity,
+        country=req.country,
+        roles=req.roles
+    )
+    return result
+

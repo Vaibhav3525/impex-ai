@@ -163,6 +163,23 @@ export const api = {
       body: JSON.stringify(params),
     }),
 
+  // Autonomous Lead Discovery
+  runAutonomousSearch: (payload: { commodity: string; country?: string; sources?: string[]; limit?: number; auto_ingest?: boolean; auto_verify?: boolean }) =>
+    request<any>("/discover/autonomous-search", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  searchEmbassyDirectories: (payload: { country?: string; commodity?: string; auto_ingest?: boolean; auto_verify?: boolean }) =>
+    request<any>("/discover/embassy-directories", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  getLinkedInPersonas: (payload: { commodity: string; country: string; roles?: string[] }) =>
+    request<any>("/discover/linkedin-personas", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   // Products
   getProducts: () => request<any[]>("/products"),
   createProduct: (data: any) =>

@@ -179,13 +179,55 @@ const PIPELINE_STAGES = [
 ];
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"directory" | "pipeline" | "queue" | "risk">("directory");
+  const [activeTab, setActiveTab] = useState<"directory" | "discovery" | "pipeline" | "queue" | "risk">("directory");
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("ALL");
   const [selectedTier, setSelectedTier] = useState("ALL");
   const [liveConnected, setLiveConnected] = useState(false);
+
+  // Autonomous Discovery Hub State
+  const [discoveryCommodity, setDiscoveryCommodity] = useState("Basmati Rice 1121");
+  const [discoveryCountry, setDiscoveryCountry] = useState("United Arab Emirates");
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [discoveryResults, setDiscoveryResults] = useState<any[]>([]);
+  const [discoverySummary, setDiscoverySummary] = useState<any>(null);
+  const [linkedinData, setLinkedinData] = useState<any>(null);
+
+  const handleRunDiscovery = async () => {
+    setDiscoveryLoading(true);
+    try {
+      const res = await api.runAutonomousSearch({
+        commodity: discoveryCommodity,
+        country: discoveryCountry,
+        sources: ["directories", "embassy", "web"],
+        limit: 15,
+        auto_ingest: true,
+        auto_verify: true,
+      });
+      setDiscoveryResults(res.leads || []);
+      setDiscoverySummary(res);
+
+      try {
+        const dorks = await api.getLinkedInPersonas({
+          commodity: discoveryCommodity,
+          country: discoveryCountry,
+        });
+        setLinkedinData(dorks);
+      } catch {}
+
+      // Refresh directory
+      const refreshed = await api.getLeads({ limit: 100 });
+      if (refreshed && refreshed.length > 0) {
+        setLeads(refreshed as any);
+      }
+    } catch (e) {
+      console.error("Discovery error:", e);
+    } finally {
+      setDiscoveryLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -275,6 +317,21 @@ export default function Dashboard() {
             </button>
 
             <button
+              onClick={() => setActiveTab("discovery")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "discovery"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Sparkles className="h-4 w-4" />
+              Lead Discovery Hub
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
+                Auto
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("pipeline")}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 activeTab === "pipeline"
@@ -337,6 +394,7 @@ export default function Dashboard() {
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               {activeTab === "directory" && "International Buyer Discovery & Evidence"}
+              {activeTab === "discovery" && "Autonomous Multi-Channel Lead Discovery Hub"}
               {activeTab === "pipeline" && "15-Stage CRM Deal Pipeline"}
               {activeTab === "queue" && "Assisted Outreach Approval Queue (Mode A)"}
               {activeTab === "risk" && "Transaction & Payment Risk Guardian"}
@@ -409,6 +467,174 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Tab: Autonomous Lead Discovery Hub */}
+        {activeTab === "discovery" && (
+          <div className="p-8 pt-2 space-y-6">
+            <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-emerald-400" />
+                    Autonomous Multi-Channel Lead Discovery Engine
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    PRD §3: Discovers international buyers across web directories, Indian Embassy commercial missions, and compliant LinkedIn personas.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    Auto-Deduplication: SHA-256
+                  </span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                    Auto-Verification: 100-Point Rubric
+                  </span>
+                </div>
+              </div>
+
+              {/* Input Form */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                    Export Commodity / Product Line
+                  </label>
+                  <input
+                    type="text"
+                    value={discoveryCommodity}
+                    onChange={(e) => setDiscoveryCommodity(e.target.value)}
+                    placeholder="e.g. Basmati Rice 1121, Turmeric, Black Pepper..."
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                    Target Buyer Market / Country
+                  </label>
+                  <select
+                    value={discoveryCountry}
+                    onChange={(e) => setDiscoveryCountry(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="All">All International Markets</option>
+                    <option value="United Arab Emirates">United Arab Emirates (Dubai, Abu Dhabi)</option>
+                    <option value="Saudi Arabia">Saudi Arabia (Jeddah, Riyadh)</option>
+                    <option value="Germany">Germany (Hamburg, Berlin, Munich)</option>
+                    <option value="United Kingdom">United Kingdom (London, Midlands)</option>
+                    <option value="United States">United States (New York, California)</option>
+                    <option value="Netherlands">Netherlands (Rotterdam, Amsterdam)</option>
+                    <option value="Japan">Japan (Tokyo, Osaka, Kobe)</option>
+                    <option value="Australia">Australia (Sydney, Melbourne)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    onClick={handleRunDiscovery}
+                    disabled={discoveryLoading || !discoveryCommodity}
+                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    {discoveryLoading ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Discovering & Verifying Buyers...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4" />
+                        <span>Run Autonomous Discovery</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Discovery Results Summary */}
+            {discoverySummary && (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  <span>
+                    Discovery Complete: Found <strong>{discoverySummary.total_discovered}</strong> buyers. 
+                    Added <strong>{discoverySummary.created_new_leads}</strong> new verified leads to CRM directory 
+                    (Updated <strong>{discoverySummary.duplicate_leads_updated}</strong> existing records).
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveTab("directory")}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold"
+                >
+                  View in Directory →
+                </button>
+              </div>
+            )}
+
+            {/* Discovered Leads Cards Grid */}
+            {discoveryResults.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Discovered Buyer Prospects ({discoveryResults.length})
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {discoveryResults.map((lead, idx) => (
+                    <div key={idx} className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-bold text-sm text-white">{lead.company_name}</div>
+                          <div className="text-xs text-slate-400">📍 {lead.city ? `${lead.city}, ` : ""}{lead.country} • {lead.product_category}</div>
+                        </div>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                          Discovered
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-300 bg-slate-900/60 p-2 rounded border border-slate-800">
+                        <div><strong className="text-slate-400">Email:</strong> {lead.business_email || "Pending Enrichment"}</div>
+                        <div><strong className="text-slate-400">Contact:</strong> {lead.contact_name ? `${lead.contact_name} (${lead.job_title})` : "Procurement Division"}</div>
+                        <div><strong className="text-slate-400">Provenance:</strong> {lead.source}</div>
+                        {lead.import_evidence && (
+                          <div className="mt-1 text-[11px] text-teal-300 italic">Evidence: {lead.import_evidence}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* LinkedIn Compliant X-Ray Search Card */}
+            {linkedinData && (
+              <div className="p-5 rounded-xl bg-slate-950 border border-blue-900/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-blue-400" />
+                    <h4 className="text-sm font-bold text-white">LinkedIn Compliant Buyer Persona X-Ray Dork</h4>
+                  </div>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                    PRD §3.D Compliant
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Targeted Google search string identifying decision-makers (*Import Managers, Sourcing Directors*) without unauthorized scraping bots:
+                </p>
+                <div className="p-2.5 bg-slate-900 rounded font-mono text-xs text-blue-300 break-all border border-slate-800">
+                  {linkedinData.individual_xray_query}
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <a
+                    href={linkedinData.individual_search_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold flex items-center gap-1.5"
+                  >
+                    <span>Launch Google X-Ray Search</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tab 1: Buyer Directory & Verification Table */}
         {activeTab === "directory" && (

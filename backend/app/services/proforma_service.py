@@ -410,3 +410,4 @@ def render_proforma_html(invoice: ProformaInvoice) -> str:
 </html>
 """
     return html
+
