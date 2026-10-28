@@ -7,6 +7,7 @@ from app.api.discovery import router as discovery_router
 from app.api.products import router as products_router
 from app.api.pipeline import router as pipeline_router
 from app.api.outreach import router as outreach_router
+from app.api.replies import router as replies_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health_router)
@@ -17,3 +18,4 @@ api_router.include_router(discovery_router)
 api_router.include_router(products_router)
 api_router.include_router(pipeline_router)
 api_router.include_router(outreach_router)
+api_router.include_router(replies_router)
