@@ -249,3 +249,4 @@ def test_suppression_list_blocks_drafting(db_session):
         compose_outreach_email(lead_id=lead.lead_id, req=req, db=db_session)
     assert exc.value.status_code == 400
     assert "suppressed" in exc.value.detail.lower()
+

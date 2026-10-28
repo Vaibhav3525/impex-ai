@@ -88,3 +88,4 @@ class ProductMatchSummary(BaseModel):
     total_leads_evaluated: int
     qualified_leads_count: int
     top_matches: List[QualificationResult]
+

@@ -87,3 +87,4 @@ class SuppressionList(Base):
     reason = Column(String(100), default="Manual Suppression", nullable=False) # Hard Bounce, Unsubscribe, Spam Complaint, Manual
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
+

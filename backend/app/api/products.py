@@ -176,3 +176,4 @@ def qualify_single_lead_against_product(
         raise HTTPException(status_code=404, detail=f"Lead with id '{lead_id}' not found.")
 
     return calculate_qualification_score(lead, prod)
+

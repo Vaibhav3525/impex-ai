@@ -64,3 +64,4 @@ class OutreachQueueSummary(BaseModel):
     total_rejected: int
     total_sent: int
     pending_emails: List[OutreachEmailResponse]
+

@@ -54,3 +54,4 @@ When scaling up to **500 new lead records per day** (15,000 leads per month):
 
 1. **No Guaranteed Commercial Return:** The system accelerates discovery, verification, and grounded outreach, but commercial trade success depends on product quality, competitive pricing, buyer market conditions, and international regulatory compliance.
 2. **Anti-Spam & Deliverability Protection:** By strictly capping volume (max 10 emails/hour, max 50 emails/day) and enforcing Mode A human signoff, the exporter avoids IP reputation damage and costly domain burn.
+

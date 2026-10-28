@@ -219,3 +219,4 @@ def test_pipeline_summary_tracks_actual_revenue(db_session):
     assert summary.total_pipeline_deals_count >= 1
     assert summary.total_confirmed_revenue_usd >= 42000.0
     assert summary.total_quotation_value_usd >= 45000.0
+

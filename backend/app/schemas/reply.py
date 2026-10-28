@@ -59,3 +59,4 @@ class ClassificationResult(BaseModel):
     extracted_payment_method: Optional[str] = None
     extracted_next_action: Optional[str] = None
     suggested_pipeline_stage: str
+

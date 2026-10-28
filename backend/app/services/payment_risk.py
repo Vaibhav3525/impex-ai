@@ -122,3 +122,4 @@ def audit_and_save_deal_risk(db: Session, deal: Deal, lead: Lead) -> Dict[str, A
     db.commit()
     db.refresh(deal)
     return assessment
+

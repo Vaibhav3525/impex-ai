@@ -273,3 +273,4 @@ def audit_and_save_lead_risk(db: Session, lead: Lead) -> RiskAssessmentResponse:
     db.commit()
     db.refresh(lead)
     return assessment
+

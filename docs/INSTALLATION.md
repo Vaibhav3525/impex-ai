@@ -129,3 +129,4 @@ npm.cmd run dev
 2. **Mode A Assisted Outreach by Default:** No automated outbound email is dispatched without manual human approval in the queue.
 3. **Qualification != Payment Risk:** Commercial suitability is scored independently from financial non-payment risk.
 4. **UN Comtrade Statistics Invariant:** Aggregate country trade data is never cited as individual buyer proof.
+

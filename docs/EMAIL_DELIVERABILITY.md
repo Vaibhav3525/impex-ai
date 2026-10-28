@@ -68,3 +68,4 @@ Never dispatch 500 emails on day 1 from a fresh domain or IP. Follow this recomm
 ### Indian Information Technology Act (2000 & Amendments)
 - Accurate sender identity and origin details.
 - No deceptive transmission headers.
+

@@ -134,3 +134,4 @@ Safeguard export transactions before production commitment:
 | **11:30 AM** | Trigger batch dispatch (hourly cap auto-managed) | `/api/v1/outreach/dispatch-batch` |
 | **03:00 PM** | Audit deal financial terms & payment structures | `/api/v1/deals/{id}/financial-risk` |
 | **05:30 PM** | Pull daily Executive KPI Report | `/api/v1/analytics/executive-report` |
+
