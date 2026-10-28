@@ -12,7 +12,7 @@ from app.models.deal import Deal, BuyerReply
 from app.models.outreach import OutreachEmail
 from app.services.payment_risk import assess_deal_financial_risk, audit_and_save_deal_risk
 from app.api.pipeline import evaluate_and_audit_deal_financial_risk, get_deal_financial_risk
-from app.api.analytics import get_executive_report
+from app.api.analytics import get_executive_report, export_leads_csv
 
 
 @pytest.fixture
@@ -292,3 +292,17 @@ def test_executive_report_aggregates_ten_prd_metrics(db_session):
 
     # Disclaimers
     assert "No guaranteed buyers" in report["compliance_disclaimer"]
+
+
+def test_export_leads_csv_endpoint(db_session):
+    """PRD §13 & §14: Export verified leads to CSV for DGFT/APEDA audit compliance."""
+    res = export_leads_csv(db=db_session)
+    assert res.media_type == "text/csv"
+    assert "impex_verified_buyers_audit.csv" in res.headers["Content-Disposition"]
+
+    content = res.body
+    text = content.decode() if isinstance(content, bytes) else str(content)
+    assert "Lead ID,Company Name,Country" in text
+    assert "Buyer Score (/100)" in text
+    assert "Provenance Source" in text
+

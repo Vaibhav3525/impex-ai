@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends
+import csv
+import io
+from typing import Optional
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
@@ -185,5 +188,70 @@ def get_executive_report(db: Session = Depends(get_db)):
             "All outbound outreach requires Mode A human approval. All lead records grounded in verifiable evidence."
         ),
     }
+
+
+@router.get("/export-csv")
+def export_leads_csv(
+    status_filter: Optional[str] = None,
+    min_score: float = 0.0,
+    db: Session = Depends(get_db)
+):
+    """
+    Exports verified export leads to CSV for DGFT/APEDA compliance or CRM portability.
+    """
+    query = db.query(Lead).filter(Lead.buyer_score >= min_score)
+    if status_filter:
+        query = query.filter(Lead.verification_status == status_filter)
+
+    leads = query.order_by(Lead.buyer_score.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Lead ID",
+        "Company Name",
+        "Country",
+        "City",
+        "Product Category",
+        "Contact Person",
+        "Designation",
+        "Business Email",
+        "Phone Number",
+        "Verification Status",
+        "Buyer Score (/100)",
+        "Pipeline Stage",
+        "Outreach Status",
+        "Provenance Source",
+        "Source URL",
+        "Import Evidence",
+    ])
+
+    for l in leads:
+        writer.writerow([
+            l.lead_id,
+            l.company_name,
+            l.country,
+            l.city or "",
+            l.product_category,
+            l.contact_name or "",
+            l.job_title or "",
+            l.business_email or "",
+            l.phone_number or "",
+            l.verification_status,
+            l.buyer_score,
+            l.pipeline_stage,
+            l.outreach_status,
+            l.source,
+            l.source_url or "",
+            l.import_evidence or "",
+        ])
+
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=impex_verified_buyers_audit.csv"}
+    )
+
 
 

@@ -139,6 +139,12 @@ export const api = {
   // Analytics & PRD Reporting
   getDashboard: () => request<any>("/analytics/dashboard"),
   getExecutiveReport: () => request<any>("/analytics/executive-report"),
+  getExportCsvUrl: (status?: string, minScore?: number) => {
+    const q = new URLSearchParams();
+    if (status) q.append("status_filter", status);
+    if (minScore !== undefined) q.append("min_score", minScore.toString());
+    return `${API_BASE_URL}/analytics/export-csv?${q.toString()}`;
+  },
 
   // Leads
   getLeads: (params?: { status?: string; min_score?: number; limit?: number }) => {
