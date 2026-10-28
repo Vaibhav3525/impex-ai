@@ -77,3 +77,55 @@ class BuyerReply(Base):
     reviewed_by_human = Column(String(50), default="PENDING") # PENDING, APPROVED, OVERRIDDEN
     human_notes = Column(Text, nullable=True)
 
+
+class ProformaInvoice(Base):
+    """
+    Commercial Export Proforma Invoice (PI) Model.
+    DGFT / Customs compliant commercial contract quotation issued to prospective international buyers.
+    """
+    __tablename__ = "proforma_invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_number = Column(String(64), unique=True, index=True, nullable=False)
+    deal_id = Column(String(64), ForeignKey("deals.deal_id", ondelete="CASCADE"), index=True, nullable=False)
+    lead_id = Column(String(64), ForeignKey("leads.lead_id", ondelete="CASCADE"), index=True, nullable=False)
+
+    issue_date = Column(DateTime, default=utc_now, nullable=False)
+    validity_days = Column(Integer, default=30)
+    
+    # Exporter / Seller Details (India)
+    exporter_name = Column(String(255), nullable=False)
+    exporter_address = Column(Text, nullable=False)
+    exporter_iec = Column(String(50), nullable=True) # Import Export Code
+    exporter_gstin = Column(String(50), nullable=True)
+    exporter_ad_code = Column(String(50), nullable=True) # Authorized Dealer Bank Code
+    bank_name = Column(String(255), nullable=True)
+    bank_swift_code = Column(String(50), nullable=True)
+    bank_account_number = Column(String(100), nullable=True)
+    
+    # Buyer / Consignee
+    buyer_company_name = Column(String(255), nullable=False)
+    buyer_country = Column(String(100), nullable=False)
+    buyer_address = Column(Text, nullable=True)
+    buyer_contact = Column(String(255), nullable=True)
+    buyer_email = Column(String(255), nullable=True)
+    
+    # Shipping & Commercial Terms
+    country_of_origin = Column(String(100), default="India")
+    port_of_loading = Column(String(100), default="Nhava Sheva (JNPT), Mumbai")
+    destination_port = Column(String(100), nullable=True)
+    incoterms = Column(String(20), default="FOB")
+    payment_terms = Column(String(100), nullable=False)
+    
+    # Line items & Financials
+    items = Column(JSON, default=list) # [{description, hs_code, quantity, unit, unit_price, total_amount}]
+    subtotal = Column(Float, nullable=False)
+    freight_insurance = Column(Float, default=0.0)
+    total_amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    
+    notes = Column(Text, nullable=True)
+    status = Column(String(50), default="Issued") # Issued, Accepted, Revised, Cancelled
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+

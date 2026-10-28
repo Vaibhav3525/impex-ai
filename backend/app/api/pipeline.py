@@ -19,12 +19,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.core.database import get_db
 from app.models.lead import Lead
-from app.models.deal import Deal
+from app.models.deal import Deal, ProformaInvoice
 from app.schemas.lead import LeadResponse
 from app.schemas.deal import (
     PIPELINE_STAGES,
@@ -38,7 +39,9 @@ from app.schemas.deal import (
     PipelineSummaryResponse,
     DealFinancialRiskResponse,
 )
+from app.schemas.proforma import ProformaInvoiceCreate, ProformaInvoiceResponse
 from app.services.payment_risk import assess_deal_financial_risk, audit_and_save_deal_risk
+from app.services.proforma_service import generate_proforma_invoice, render_proforma_html
 
 router = APIRouter(tags=["CRM Pipeline & Deals"])
 
@@ -350,4 +353,101 @@ def get_deal_financial_risk(deal_id: str, db: Session = Depends(get_db)):
 
     assessment = assess_deal_financial_risk(deal, lead)
     return DealFinancialRiskResponse(**assessment)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Commercial Export Quotation & Proforma Invoice (PI) Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/deals/{deal_id}/proforma-invoice", response_model=ProformaInvoiceResponse, status_code=status.HTTP_201_CREATED)
+def create_deal_proforma_invoice(
+    deal_id: str,
+    req: Optional[ProformaInvoiceCreate] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Generates a DGFT / Customs compliant commercial Proforma Invoice for an export deal.
+    Automatically calculates item totals, updates deal quotation amount, advances pipeline stage,
+    and returns structured invoice data.
+    """
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
+
+    lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Associated lead '{deal.lead_id}' not found.")
+
+    invoice = generate_proforma_invoice(db, deal, lead, req)
+    return invoice
+
+
+@router.get("/deals/{deal_id}/proforma-invoice", response_model=ProformaInvoiceResponse)
+def get_deal_proforma_invoice(deal_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves the most recently issued Proforma Invoice for a specific commercial deal.
+    """
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
+
+    invoice = (
+        db.query(ProformaInvoice)
+        .filter(ProformaInvoice.deal_id == deal_id)
+        .order_by(desc(ProformaInvoice.created_at))
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"No Proforma Invoice has been issued for deal '{deal_id}'.")
+    return invoice
+
+
+@router.get("/deals/{deal_id}/proforma-invoice/html", response_class=HTMLResponse)
+def get_deal_proforma_invoice_html(deal_id: str, db: Session = Depends(get_db)):
+    """
+    Renders a print-ready, professional HTML Proforma Invoice suitable for browser viewing or saving as PDF.
+    """
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
+
+    invoice = (
+        db.query(ProformaInvoice)
+        .filter(ProformaInvoice.deal_id == deal_id)
+        .order_by(desc(ProformaInvoice.created_at))
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"No Proforma Invoice issued for deal '{deal_id}'.")
+
+    html = render_proforma_html(invoice)
+    return HTMLResponse(content=html, status_code=200)
+
+
+@router.get("/proforma-invoices", response_model=List[ProformaInvoiceResponse])
+def list_proforma_invoices(
+    limit: int = 50,
+    status_filter: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Lists all issued commercial Proforma Invoices with pagination.
+    """
+    query = db.query(ProformaInvoice)
+    if status_filter:
+        query = query.filter(ProformaInvoice.status == status_filter)
+    return query.order_by(desc(ProformaInvoice.created_at)).limit(limit).all()
+
+
+@router.get("/proforma-invoices/{invoice_number}/html", response_class=HTMLResponse)
+def get_proforma_invoice_by_number_html(invoice_number: str, db: Session = Depends(get_db)):
+    """
+    Direct HTML view of a specific Proforma Invoice by its unique invoice number (e.g., PI-2026-A1B2C3).
+    """
+    invoice = db.query(ProformaInvoice).filter(ProformaInvoice.invoice_number == invoice_number).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice '{invoice_number}' not found.")
+    html = render_proforma_html(invoice)
+    return HTMLResponse(content=html, status_code=200)
+
 

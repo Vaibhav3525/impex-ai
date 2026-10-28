@@ -247,4 +247,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  // Proforma Invoice & Export Quotations
+  getProformaInvoice: (dealId: string) =>
+    request<any>(`/deals/${dealId}/proforma-invoice`),
+  generateProformaInvoice: (dealId: string, payload?: any) =>
+    request<any>(`/deals/${dealId}/proforma-invoice`, {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    }),
+  listProformaInvoices: (limit: number = 50) =>
+    request<any[]>(`/proforma-invoices?limit=${limit}`),
+  getProformaInvoiceHtmlUrl: (dealId: string) =>
+    `${API_BASE_URL}/deals/${dealId}/proforma-invoice/html`,
 };
+
