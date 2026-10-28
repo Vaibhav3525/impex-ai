@@ -110,6 +110,35 @@ export interface BuyerReply {
   human_notes?: string;
 }
 
+export interface LeadPagination {
+  total: number;
+  page: number;
+  page_size: number;
+  items: Lead[];
+}
+
+export interface OutreachQueueSummary {
+  total_queued: number;
+  total_approved: number;
+  total_rejected: number;
+  total_sent: number;
+  pending_emails: OutreachEmail[];
+}
+
+export interface KanbanColumn {
+  stage: string;
+  index: number;
+  count: number;
+  leads: Lead[];
+  deals: Deal[];
+}
+
+export interface KanbanBoardResponse {
+  stages: KanbanColumn[];
+  total_leads: number;
+  total_deals: number;
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const res = await fetch(url, {
@@ -147,12 +176,28 @@ export const api = {
   },
 
   // Leads
-  getLeads: (params?: { status?: string; min_score?: number; limit?: number }) => {
+  getLeads: (params?: {
+    status?: string;
+    min_score?: number;
+    limit?: number;
+    page_size?: number;
+    page?: number;
+    country?: string;
+    product_category?: string;
+    pipeline_stage?: string;
+    search?: string;
+  }) => {
     const q = new URLSearchParams();
     if (params?.status) q.append("verification_status", params.status);
     if (params?.min_score !== undefined) q.append("min_score", params.min_score.toString());
-    if (params?.limit) q.append("limit", params.limit.toString());
-    return request<Lead[]>(`/leads?${q.toString()}`);
+    const size = params?.page_size || params?.limit || 100;
+    q.append("page_size", size.toString());
+    if (params?.page) q.append("page", params.page.toString());
+    if (params?.country) q.append("country", params.country);
+    if (params?.product_category) q.append("product_category", params.product_category);
+    if (params?.pipeline_stage) q.append("pipeline_stage", params.pipeline_stage);
+    if (params?.search) q.append("search", params.search);
+    return request<LeadPagination>(`/leads?${q.toString()}`);
   },
   getLead: (leadId: string) => request<Lead>(`/leads/${leadId}`),
   getLeadAuditTrail: (leadId: string) => request<VerificationLog[]>(`/leads/${leadId}/audit-trail`),
@@ -199,7 +244,7 @@ export const api = {
     }),
 
   // CRM Pipeline & Deals
-  getKanbanBoard: () => request<any>("/pipeline/kanban"),
+  getKanbanBoard: () => request<KanbanBoardResponse>("/pipeline/kanban"),
   getPipelineSummary: () => request<any>("/pipeline/summary"),
   updateLeadStage: (leadId: string, newStage: string, notes?: string) =>
     request<Lead>(`/pipeline/leads/${leadId}/stage`, {
@@ -226,9 +271,11 @@ export const api = {
     }),
 
   // Outreach & Mode A Approvals
-  getOutreachQueue: (status?: string) => {
-    const q = status ? `?status=${encodeURIComponent(status)}` : "";
-    return request<OutreachEmail[]>(`/outreach/queue${q}`);
+  getOutreachQueue: (status?: string, limit?: number) => {
+    const q = new URLSearchParams();
+    if (status) q.append("status_filter", status);
+    if (limit) q.append("limit", limit.toString());
+    return request<OutreachQueueSummary>(`/outreach/queue?${q.toString()}`);
   },
   composeOutreachEmail: (leadId: string, params?: { product_id?: string; sequence_step?: number }) =>
     request<OutreachEmail>(`/outreach/${leadId}/compose`, {

@@ -192,6 +192,24 @@ export default function Dashboard() {
   const [selectedCountry, setSelectedCountry] = useState("ALL");
   const [selectedTier, setSelectedTier] = useState("ALL");
   const [liveConnected, setLiveConnected] = useState(false);
+  const [totalDbCount, setTotalDbCount] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [loadingLeads, setLoadingLeads] = useState<boolean>(false);
+
+  // CRM Kanban Pipeline State
+  const [kanbanData, setKanbanData] = useState<any>(null);
+  const [loadingKanban, setLoadingKanban] = useState<boolean>(false);
+
+  // Mode A Outreach Queue State
+  const [outreachQueueSummary, setOutreachQueueSummary] = useState<any>(null);
+  const [outreachQueueEmails, setOutreachQueueEmails] = useState<any[]>([]);
+  const [queueStatusFilter, setQueueStatusFilter] = useState<string>("Queued");
+  const [loadingQueue, setLoadingQueue] = useState<boolean>(false);
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // High Risk Monitor State
+  const [highRiskList, setHighRiskList] = useState<any[]>([]);
+  const [loadingHighRisk, setLoadingHighRisk] = useState<boolean>(false);
 
   // Executive Analytics State (PRD §13)
   const [execReport, setExecReport] = useState<any>(null);
@@ -211,6 +229,126 @@ export default function Dashboard() {
       console.info("Analytics fetch error:", e);
     } finally {
       setLoadingAnalytics(false);
+    }
+  };
+
+  const fetchLeads = async (page: number = 1) => {
+    setLoadingLeads(true);
+    try {
+      const res = await api.getLeads({ page, page_size: 100 });
+      const rawItems = Array.isArray(res) ? res : res.items || [];
+      if (rawItems.length > 0) {
+        const formatted = rawItems.map((l: any) => ({
+          ...l,
+          risk_flags: l.risk_flags || [],
+          scores_breakdown: l.scores_breakdown || {
+            identity: Math.round(l.buyer_score * 0.2),
+            relevance: Math.round(l.buyer_score * 0.2),
+            website: Math.round(l.buyer_score * 0.15),
+            email: Math.round(l.buyer_score * 0.15),
+            import_evidence: Math.round(l.buyer_score * 0.15),
+            independent: Math.round(l.buyer_score * 0.15),
+          }
+        }));
+        setLeads(formatted);
+        setTotalDbCount(res.total ?? formatted.length);
+        setCurrentPage(page);
+        setLiveConnected(true);
+      }
+    } catch (err) {
+      console.info("Error fetching live leads:", err);
+    } finally {
+      setLoadingLeads(false);
+    }
+  };
+
+  const loadKanban = async () => {
+    setLoadingKanban(true);
+    try {
+      const board = await api.getKanbanBoard();
+      setKanbanData(board);
+    } catch (e) {
+      console.info("Kanban fetch error:", e);
+    } finally {
+      setLoadingKanban(false);
+    }
+  };
+
+  const loadQueue = async (st: string = queueStatusFilter) => {
+    setLoadingQueue(true);
+    try {
+      const summary = await api.getOutreachQueue(st, 50);
+      setOutreachQueueSummary(summary);
+      setOutreachQueueEmails(summary.pending_emails || []);
+    } catch (e) {
+      console.info("Queue fetch error:", e);
+    } finally {
+      setLoadingQueue(false);
+    }
+  };
+
+  const loadHighRisk = async () => {
+    setLoadingHighRisk(true);
+    try {
+      const hr = await api.getHighRiskQueue();
+      setHighRiskList(hr || []);
+    } catch (e) {
+      console.info("High risk fetch error:", e);
+    } finally {
+      setLoadingHighRisk(false);
+    }
+  };
+
+  const handleApproveEmail = async (emailId: string) => {
+    try {
+      await api.approveOutreachEmail(emailId);
+      setActionSuccessMsg(`Email ${emailId} approved for dispatch.`);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
+      await loadCadenceStatus();
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (e: any) {
+      alert(`Approval error: ${e.message}`);
+    }
+  };
+
+  const handleDispatchEmail = async (emailId: string) => {
+    try {
+      await api.dispatchEmail(emailId);
+      setActionSuccessMsg(`Email ${emailId} successfully dispatched via SMTP!`);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
+      await loadCadenceStatus();
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (e: any) {
+      alert(`Dispatch error: ${e.message}`);
+    }
+  };
+
+  const handleApproveAndDispatch = async (emailId: string) => {
+    try {
+      await api.approveOutreachEmail(emailId);
+      await api.dispatchEmail(emailId);
+      setActionSuccessMsg(`Email ${emailId} approved & dispatched via SMTP!`);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
+      await loadCadenceStatus();
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (e: any) {
+      alert(`Dispatch error: ${e.message}`);
+    }
+  };
+
+  const handleRejectEmail = async (emailId: string) => {
+    const reason = prompt("Enter rejection / quarantine reason:", "Non-matching specs or high risk") || "Manual compliance rejection";
+    try {
+      await api.rejectOutreachEmail(emailId, reason);
+      setActionSuccessMsg(`Email ${emailId} rejected / quarantined.`);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (e: any) {
+      alert(`Reject error: ${e.message}`);
     }
   };
 
@@ -244,11 +382,10 @@ export default function Dashboard() {
         setLinkedinData(dorks);
       } catch {}
 
-      // Refresh directory
-      const refreshed = await api.getLeads({ limit: 100 });
-      if (refreshed && refreshed.length > 0) {
-        setLeads(refreshed as any);
-      }
+      // Refresh directory, kanban & analytics
+      await fetchLeads(1);
+      await loadAnalytics();
+      await loadKanban();
     } catch (e) {
       console.error("Discovery error:", e);
     } finally {
@@ -281,8 +418,9 @@ export default function Dashboard() {
       const res = await api.processDueFollowups({ min_days: 4, force_advance: true, limit: 50 });
       setCadenceResult(res);
       await loadCadenceStatus();
-      const refreshed = await api.getLeads({ limit: 100 });
-      if (refreshed && refreshed.length > 0) setLeads(refreshed as any);
+      await fetchLeads(currentPage);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
     } catch (e) {
       console.error("Cadence process error:", e);
     } finally {
@@ -319,8 +457,9 @@ export default function Dashboard() {
       });
       setSimReplyResult(res);
       await loadCadenceStatus();
-      const refreshed = await api.getLeads({ limit: 100 });
-      if (refreshed && refreshed.length > 0) setLeads(refreshed as any);
+      await fetchLeads(currentPage);
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
     } catch (e) {
       console.error("Simulate reply error:", e);
     } finally {
@@ -331,29 +470,16 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadData() {
       try {
-        loadCadenceStatus();
-        loadAnalytics();
-        const liveLeads = await api.getLeads({ limit: 100 });
-        if (liveLeads && liveLeads.length > 0) {
-          // Augment with default scores_breakdown if missing
-          const formatted = liveLeads.map((l: any) => ({
-            ...l,
-            risk_flags: l.risk_flags || [],
-            scores_breakdown: l.scores_breakdown || {
-              identity: Math.round(l.buyer_score * 0.2),
-              relevance: Math.round(l.buyer_score * 0.2),
-              website: Math.round(l.buyer_score * 0.15),
-              email: Math.round(l.buyer_score * 0.15),
-              import_evidence: Math.round(l.buyer_score * 0.15),
-              independent: Math.round(l.buyer_score * 0.15),
-            }
-          }));
-          setLeads(formatted);
-          setLiveConnected(true);
-        }
+        await Promise.all([
+          fetchLeads(1),
+          loadCadenceStatus(),
+          loadAnalytics(),
+          loadKanban(),
+          loadQueue("Queued"),
+          loadHighRisk(),
+        ]);
       } catch (err) {
-        // Fallback gracefully to demo dataset
-        console.info("Live backend not connected. Using local dataset.");
+        console.info("Live backend connection note:", err);
       }
     }
     loadData();
@@ -537,7 +663,7 @@ export default function Dashboard() {
             {liveConnected ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Live API Connected ({totalLeads} Leads)</span>
+                <span>Live Connected ({totalDbCount > 0 ? totalDbCount.toLocaleString() : totalLeads} Leads in DB)</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
@@ -552,15 +678,28 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {/* Action feedback alert banner */}
+        {actionSuccessMsg && (
+          <div className="mx-8 mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <span>{actionSuccessMsg}</span>
+            </div>
+            <button onClick={() => setActionSuccessMsg(null)} className="text-emerald-400 hover:text-white">✕</button>
+          </div>
+        )}
+
         {/* Primary KPI Ribbon */}
         <div className="p-8 pb-4">
           <div className="grid grid-cols-4 gap-4">
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
               <span className="text-xs font-medium text-slate-400">Total Leads Discovered</span>
               <div className="flex items-baseline justify-between mt-1">
-                <span className="text-2xl font-bold text-white">{totalLeads}</span>
+                <span className="text-2xl font-bold text-white">
+                  {totalDbCount > 0 ? totalDbCount.toLocaleString() : totalLeads.toLocaleString()}
+                </span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  {Math.round((verifiedCount / totalLeads) * 100)}% Verified
+                  {Math.round((verifiedCount / (totalLeads || 1)) * 100)}% Verified
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-2">Target: 500 records/day capacity</p>
@@ -908,17 +1047,74 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
+
+            {/* Table pagination & count ribbon */}
+            <div className="flex items-center justify-between text-xs text-slate-400 px-2 py-2 border-t border-slate-800">
+              <div>
+                Showing <strong className="text-white">{filteredLeads.length}</strong> loaded leads
+                {totalDbCount > 0 && <span> of <strong className="text-emerald-400">{totalDbCount.toLocaleString()}</strong> verified buyer records in database</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fetchLeads(currentPage - 1)}
+                  disabled={currentPage <= 1 || loadingLeads}
+                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold"
+                >
+                  ← Previous
+                </button>
+                <span className="px-2 font-mono text-slate-300">Page {currentPage}</span>
+                <button
+                  onClick={() => fetchLeads(currentPage + 1)}
+                  disabled={filteredLeads.length < 50 || loadingLeads}
+                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold"
+                >
+                  Next →
+                </button>
+                <button
+                  onClick={() => fetchLeads(currentPage)}
+                  disabled={loadingLeads}
+                  className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 font-semibold flex items-center gap-1"
+                >
+                  <RefreshCw className={`h-3 w-3 ${loadingLeads ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Tab 2: 15-Stage CRM Deal Pipeline */}
         {activeTab === "pipeline" && (
-          <div className="p-8 pt-2 overflow-x-auto">
-            <div className="flex gap-4 min-w-[2000px] pb-6">
+          <div className="p-8 pt-2 overflow-x-auto space-y-4">
+            <div className="flex items-center justify-between bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-bold text-white">Full Commercial Pipeline & Kanban Board</h3>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold">
+                  {kanbanData?.total_leads ?? (totalDbCount > 0 ? totalDbCount : totalLeads)} Leads Tracked
+                </span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30 font-semibold">
+                  {kanbanData?.total_deals ?? 90} Active Commercial Deals
+                </span>
+              </div>
+              <button
+                onClick={loadKanban}
+                disabled={loadingKanban}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs font-semibold text-slate-300 flex items-center gap-1.5"
+              >
+                <RefreshCw className={`h-3 w-3 ${loadingKanban ? "animate-spin" : ""}`} />
+                <span>Refresh Kanban</span>
+              </button>
+            </div>
+
+            <div className="flex gap-4 min-w-[2400px] pb-6">
               {PIPELINE_STAGES.map((stage, idx) => {
-                const stageLeads = leads.filter(l => l.pipeline_stage === stage);
+                const colData = kanbanData?.stages?.find((s: any) => s.stage === stage);
+                const stageDeals = colData?.deals || [];
+                const stageLeads = colData?.leads || leads.filter(l => l.pipeline_stage === stage);
+                const totalColCount = colData?.count ?? (stageLeads.length + stageDeals.length);
+
                 return (
-                  <div key={stage} className="w-72 flex-shrink-0 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col">
+                  <div key={stage} className="w-80 flex-shrink-0 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
                       <div className="flex items-center gap-2">
                         <span className="h-5 w-5 rounded-full bg-slate-800 text-[11px] font-bold text-slate-300 flex items-center justify-center">
@@ -927,30 +1123,60 @@ export default function Dashboard() {
                         <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">{stage}</h4>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 font-semibold text-slate-400">
-                        {stageLeads.length}
+                        {totalColCount}
                       </span>
                     </div>
 
-                    <div className="space-y-3 flex-1 overflow-y-auto">
-                      {stageLeads.length === 0 ? (
-                        <div className="text-center py-8 text-xs text-slate-600">No prospects</div>
-                      ) : (
-                        stageLeads.map(l => (
-                          <div
-                            key={l.lead_id}
-                            onClick={() => setSelectedLead(l)}
-                            className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/50 cursor-pointer transition-all shadow-sm"
-                          >
-                            <div className="font-semibold text-sm text-white">{l.company_name}</div>
-                            <div className="text-xs text-slate-400 mt-1">{l.country} • {l.product_category}</div>
-                            <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800/60">
-                              <span className={`text-[11px] font-bold ${l.buyer_score >= 80 ? "text-emerald-400" : "text-amber-400"}`}>
-                                Score: {l.buyer_score}
-                              </span>
-                              <span className="text-[10px] text-slate-500">{l.lead_id}</span>
-                            </div>
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[620px]">
+                      {stageDeals.map((d: any) => (
+                        <div
+                          key={d.deal_id}
+                          className="p-3.5 rounded-lg bg-blue-950/40 border border-blue-800/60 hover:border-blue-500/50 transition-all shadow-sm space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-blue-300">{d.deal_id}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              d.payment_risk_status === "LOW" ? "bg-emerald-950 text-emerald-300 border border-emerald-700" :
+                              d.payment_risk_status === "MEDIUM" ? "bg-amber-950 text-amber-300 border border-amber-700" :
+                              "bg-rose-950 text-rose-300 border border-rose-700"
+                            }`}>
+                              Risk: {d.payment_risk_status}
+                            </span>
                           </div>
-                        ))
+                          <div className="font-semibold text-sm text-white">{d.product_name}</div>
+                          <div className="text-xs text-slate-300">
+                            {d.required_quantity && <span>Qty: {d.required_quantity} • </span>}
+                            <span>Port: {d.destination_port || "CIF Jebel Ali"}</span>
+                          </div>
+                          <div className="text-xs font-mono text-emerald-400 font-bold">
+                            {d.confirmed_order_value ? `$${d.confirmed_order_value.toLocaleString()} Confirmed` : 
+                             d.quotation_amount ? `$${d.quotation_amount.toLocaleString()} Quoted` : "Terms Pending"}
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            Payment: {d.payment_terms || "100% LC at sight"}
+                          </div>
+                        </div>
+                      ))}
+
+                      {stageLeads.slice(0, 15).map((l: any) => (
+                        <div
+                          key={l.lead_id}
+                          onClick={() => setSelectedLead(l)}
+                          className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/50 cursor-pointer transition-all shadow-sm"
+                        >
+                          <div className="font-semibold text-sm text-white">{l.company_name}</div>
+                          <div className="text-xs text-slate-400 mt-1">{l.country} • {l.product_category}</div>
+                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800/60">
+                            <span className={`text-[11px] font-bold ${l.buyer_score >= 80 ? "text-emerald-400" : "text-amber-400"}`}>
+                              Score: {l.buyer_score}
+                            </span>
+                            <span className="text-[10px] text-slate-500">{l.lead_id}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {stageDeals.length === 0 && stageLeads.length === 0 && (
+                        <div className="text-center py-8 text-xs text-slate-600">No prospects</div>
                       )}
                     </div>
                   </div>
@@ -1144,61 +1370,163 @@ export default function Dashboard() {
 
             {/* Mode A Pending Emails Review List */}
             <div className="space-y-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Pending Mode A Outreach & Follow-Up Reviews
-              </h4>
-
-              {leads.filter(l => l.pipeline_stage === "Outreach Approved" || l.outreach_status?.includes("Queued")).slice(0, 5).map(lead => (
-                <div key={lead.lead_id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 space-y-4">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                    <div>
-                      <span className="text-xs font-semibold text-emerald-400">Target Buyer</span>
-                      <h3 className="text-lg font-bold text-white">{lead.company_name} ({lead.country})</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">To: {lead.contact_name} &lt;{lead.business_email}&gt;</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
-                        Qualification: {lead.buyer_score}/100
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 space-y-3 leading-relaxed border border-slate-800">
-                    <p><strong>Subject:</strong> Direct Partnership Inquiry: Premium Indian {lead.product_category} for {lead.company_name}</p>
-                    <p>Dear {lead.contact_name || "Procurement Director"},</p>
-                    <p>
-                      I hope this message finds you well in {lead.city || lead.country}. We noted {lead.company_name}&apos;s verified track record as a prominent importer of {lead.product_category} across the region.
-                    </p>
-                    <p>
-                      We are an established Indian government-registered exporter operating under APEDA & DGFT compliance, specializing in premium-grade specifications with ISO 22000 and HACCP certified processing facilities.
-                    </p>
-                    <p>
-                      We would be pleased to share our complete product catalog, COA (Certificate of Analysis), and provide sample shipments with competitive CIF pricing to your nearest port.
-                    </p>
-                    <p>Best regards,<br/>Export Management Division<br/>Indian Export Corp</p>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">
-                      Edit Proposal
-                    </button>
-                    <button className="px-4 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-semibold text-rose-300">
-                      Reject / Quarantine
-                    </button>
-                    <button className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2">
-                      <Send className="h-3.5 w-3.5" />
-                      Approve & Dispatch
-                    </button>
-                  </div>
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-emerald-400" />
+                  <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                    Mode A Grounded Email Queue
+                  </h4>
                 </div>
-              ))}
+
+                {/* Queue status filter buttons */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  {(["Queued", "Approved", "Sent", "Rejected"] as const).map(st => {
+                    const count = 
+                      st === "Queued" ? outreachQueueSummary?.total_queued :
+                      st === "Approved" ? outreachQueueSummary?.total_approved :
+                      st === "Sent" ? outreachQueueSummary?.total_sent :
+                      outreachQueueSummary?.total_rejected;
+
+                    return (
+                      <button
+                        key={st}
+                        onClick={() => {
+                          setQueueStatusFilter(st);
+                          loadQueue(st);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+                          queueStatusFilter === st
+                            ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                            : "bg-slate-900 hover:bg-slate-800 text-slate-400"
+                        }`}
+                      >
+                        <span>{st}</span>
+                        {count !== undefined && (
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                            queueStatusFilter === st ? "bg-emerald-800 text-white" : "bg-slate-800 text-slate-300"
+                          }`}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => loadQueue(queueStatusFilter)}
+                    disabled={loadingQueue}
+                    className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400"
+                    title="Refresh Queue"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingQueue ? "animate-spin text-emerald-400" : ""}`} />
+                  </button>
+                </div>
+              </div>
+
+              {outreachQueueEmails.length === 0 ? (
+                <div className="p-12 text-center rounded-xl border border-slate-800 bg-slate-950/60 text-slate-500 text-xs">
+                  No outreach emails currently in <strong>{queueStatusFilter}</strong> state.
+                </div>
+              ) : (
+                outreachQueueEmails.map((email: any) => (
+                  <div key={email.email_id || email.id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 space-y-4 shadow-sm">
+                    <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-emerald-400">Target Buyer</span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                            {email.email_id}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                            Sequence Touch {email.sequence_step || 1}
+                          </span>
+                        </div>
+                        <h3 className="text-lg font-bold text-white mt-1">{email.company_name} ({email.country})</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          To: {email.to_name || "Procurement Desk"} &lt;{email.to_email}&gt;
+                        </p>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-1.5">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+                          email.status === "Approved" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" :
+                          email.status === "Sent" ? "bg-blue-500/10 text-blue-400 border border-blue-500/30" :
+                          email.status === "Rejected" ? "bg-rose-500/10 text-rose-400 border border-rose-500/30" :
+                          "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                        }`}>
+                          Status: {email.status}
+                        </span>
+                        {email.confidence_score && (
+                          <span className="text-[11px] text-emerald-400 font-mono">
+                            {(email.confidence_score * 100).toFixed(0)}% Factually Grounded
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 space-y-3 leading-relaxed border border-slate-800">
+                      <p><strong className="text-slate-400 font-sans">Subject:</strong> {email.subject}</p>
+                      <div className="whitespace-pre-line text-slate-200">
+                        {email.body_text}
+                      </div>
+                    </div>
+
+                    {email.grounding_evidence && (
+                      <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400">
+                        <strong className="text-emerald-400">Public Grounding Evidence:</strong> {email.grounding_evidence}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="text-[11px] text-slate-500">
+                        Created: {new Date(email.created_at).toLocaleString()}
+                        {email.sent_at && <span> • Dispatched: {new Date(email.sent_at).toLocaleString()}</span>}
+                        {email.rejection_reason && <span className="text-rose-400"> • Reason: {email.rejection_reason}</span>}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {email.status === "Queued" && (
+                          <>
+                            <button
+                              onClick={() => handleRejectEmail(email.email_id)}
+                              className="px-4 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-semibold text-rose-300 transition-colors"
+                            >
+                              Reject / Quarantine
+                            </button>
+                            <button
+                              onClick={() => handleApproveEmail(email.email_id)}
+                              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+                            >
+                              Approve Only
+                            </button>
+                            <button
+                              onClick={() => handleApproveAndDispatch(email.email_id)}
+                              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              Approve & Dispatch
+                            </button>
+                          </>
+                        )}
+                        {email.status === "Approved" && (
+                          <button
+                            onClick={() => handleDispatchEmail(email.email_id)}
+                            className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            Dispatch via SMTP
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
 
         {/* Tab 4: Payment Risk & Transaction Safety */}
         {activeTab === "risk" && (
-          <div className="p-8 pt-2 max-w-4xl space-y-6">
+          <div className="p-8 pt-2 max-w-5xl space-y-6">
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
               <h3 className="text-base font-bold text-white mb-2">Automated Payment Term Risk Rubric</h3>
               <div className="grid grid-cols-3 gap-3 text-xs">
@@ -1217,21 +1545,54 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800">
-              <h4 className="text-sm font-bold text-white mb-3">Detected Fraud Flags & Anomalies</h4>
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-400" />
+                  <span>Quarantined High-Risk Buyers & Advance-Fee Fraud Signals ({highRiskList.length})</span>
+                </h4>
+                <button
+                  onClick={loadHighRisk}
+                  disabled={loadingHighRisk}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded font-semibold flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`h-3 w-3 ${loadingHighRisk ? "animate-spin text-rose-400" : ""}`} />
+                  <span>Refresh Queue</span>
+                </button>
+              </div>
+
               <div className="space-y-3">
-                <div className="p-3 rounded-lg bg-slate-900 border border-rose-500/30 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className="h-4 w-4 text-rose-400" />
-                    <div>
-                      <div className="text-xs font-bold text-white">Suspicious Quick Trades LLC (LID-E185CA70)</div>
-                      <div className="text-[11px] text-rose-300">Trigger: Free personal email (@gmail.com) + Upfront tender registration fee request</div>
+                {highRiskList.map((hr: any) => (
+                  <div key={hr.lead_id} className="p-4 rounded-lg bg-slate-900 border border-rose-500/30 flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-white">{hr.company_name}</span>
+                        <span className="text-xs text-slate-400">({hr.country} • {hr.lead_id})</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-rose-950 text-rose-400 border border-rose-800">
+                          {hr.risk_level || "HIGH"} RISK
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-300">
+                        <strong>Payment Risk Score:</strong> {hr.payment_risk_score ?? 40} / 100 • <strong>Contact:</strong> {hr.contact_name || "N/A"} ({hr.business_email || "No email listed"})
+                      </div>
+                      <div className="text-xs text-rose-300">
+                        <strong>Risk Flags:</strong> {hr.risk_flags && hr.risk_flags.length > 0 ? hr.risk_flags.join(", ") : "Untrusted registration request / high financial vulnerability"}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => setSelectedLead(hr)}
+                      className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white whitespace-nowrap"
+                    >
+                      Audit 100-Pt
+                    </button>
                   </div>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800">
-                    QUARANTINED
-                  </span>
-                </div>
+                ))}
+
+                {highRiskList.length === 0 && (
+                  <div className="p-6 text-center text-xs text-slate-500">
+                    No active high-risk leads in quarantine.
+                  </div>
+                )}
               </div>
             </div>
           </div>
