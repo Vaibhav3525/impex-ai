@@ -36,7 +36,9 @@ from app.schemas.deal import (
     KanbanBoardResponse,
     PipelineFunnelMetric,
     PipelineSummaryResponse,
+    DealFinancialRiskResponse,
 )
+from app.services.payment_risk import assess_deal_financial_risk, audit_and_save_deal_risk
 
 router = APIRouter(tags=["CRM Pipeline & Deals"])
 
@@ -308,3 +310,44 @@ def delete_deal(deal_id: str, db: Session = Depends(get_db)):
     db.delete(deal)
     db.commit()
     return {"message": f"Deal '{deal_id}' successfully removed.", "status": "deleted"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. Transaction Financial Safety & Commercial Risk
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/deals/{deal_id}/financial-risk", response_model=DealFinancialRiskResponse)
+def evaluate_and_audit_deal_financial_risk(deal_id: str, db: Session = Depends(get_db)):
+    """
+    Evaluates commercial deal payment terms against buyer risk status and order exposure.
+    Persists payment risk rating to deal records.
+    PRD Rule: High-risk payment terms (OA/DA) require human approval and are flagged/blocked.
+    """
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
+
+    lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Associated lead '{deal.lead_id}' not found.")
+
+    assessment = audit_and_save_deal_risk(db, deal, lead)
+    return DealFinancialRiskResponse(**assessment)
+
+
+@router.get("/deals/{deal_id}/financial-risk", response_model=DealFinancialRiskResponse)
+def get_deal_financial_risk(deal_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves dynamic commercial financial risk assessment for an export deal without modifying state.
+    """
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
+
+    lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Associated lead '{deal.lead_id}' not found.")
+
+    assessment = assess_deal_financial_risk(deal, lead)
+    return DealFinancialRiskResponse(**assessment)
+

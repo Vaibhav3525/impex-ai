@@ -94,3 +94,13 @@ class PipelineSummaryResponse(BaseModel):
     total_pipeline_deals_count: int
     total_quotation_value_usd: float
     total_confirmed_revenue_usd: float
+
+class DealFinancialRiskResponse(BaseModel):
+    deal_id: str
+    status: str
+    risk_rating: str
+    risk_factors: List[str]
+    human_approval_required: bool
+    recommended_action: str
+    evaluated_at: str
+
