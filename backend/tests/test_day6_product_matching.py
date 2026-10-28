@@ -283,7 +283,7 @@ def test_match_all_leads_ordering(db_session):
         import_evidence=None,
     )
     
-    matches = match_all_leads_for_product(db_session, prod, min_score=0.0)
+    matches = match_all_leads_for_product(db_session, prod, min_score=0.0, limit=500)
     assert len(matches) >= 2
     
     # Verify descending sort order
