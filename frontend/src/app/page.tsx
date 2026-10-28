@@ -1,0 +1,773 @@
+"use client";
+
+import React, { useState } from "react";
+import {
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
+  Building2,
+  Mail,
+  Send,
+  Search,
+  Filter,
+  Eye,
+  DollarSign,
+  Globe,
+  FileCheck,
+  ExternalLink,
+  RefreshCw,
+  Sparkles,
+  Layers,
+  ChevronRight,
+  TrendingUp
+} from "lucide-react";
+
+interface Lead {
+  lead_id: string;
+  company_name: string;
+  country: string;
+  city: string | null;
+  website: string | null;
+  product_category: string;
+  contact_name: string | null;
+  job_title: string | null;
+  business_email: string | null;
+  phone_number: string | null;
+  source: string;
+  source_url: string | null;
+  import_evidence: string | null;
+  verification_status: "Verified" | "Partially Verified" | "Unverified" | "Rejected";
+  buyer_score: number;
+  risk_flags: string[];
+  pipeline_stage: string;
+  notes: string | null;
+  scores_breakdown?: {
+    identity: number;
+    relevance: number;
+    website: number;
+    email: number;
+    import_evidence: number;
+    independent: number;
+  };
+}
+
+const INITIAL_LEADS: Lead[] = [
+  {
+    lead_id: "LID-F28ABCBD",
+    company_name: "Nordic Grains & Spices AS",
+    country: "Norway",
+    city: "Oslo",
+    website: "https://www.nordicgrains.example.no",
+    product_category: "Basmati Rice & Organic Spices",
+    contact_name: "Erik Solberg",
+    job_title: "Head of Procurement",
+    business_email: "erik.solberg@nordicgrains.example.no",
+    phone_number: "+47 22 88 44 00",
+    source: "APEDA International Buyer Directory",
+    source_url: "https://apeda.gov.in/buyer-directory/norway-importers.pdf",
+    import_evidence: "Registered grain and organic spice importer under Norwegian Food Safety Authority (Mattilsynet).",
+    verification_status: "Verified",
+    buyer_score: 95.0,
+    risk_flags: [],
+    pipeline_stage: "Verified Candidate",
+    notes: "Consistently imports 50+ FCL containers of long-grain rice annually.",
+    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 10 }
+  },
+  {
+    lead_id: "LID-99B4E38A",
+    company_name: "Gulf Agro Commodities FZE",
+    country: "United Arab Emirates",
+    city: "Dubai",
+    website: "https://www.gulfagro.example.ae",
+    product_category: "Non-Basmati Rice & Pulses",
+    contact_name: "Tariq Al-Mansoor",
+    job_title: "Managing Director",
+    business_email: "tariq@gulfagro.example.ae",
+    phone_number: "+971 4 332 9911",
+    source: "Indian Trade Portal Trade Leads",
+    source_url: "https://www.indiantradeportal.in/trade-leads/uae-rice",
+    import_evidence: "Active DMCC trade license holder with Jebel Ali port clearance records.",
+    verification_status: "Verified",
+    buyer_score: 95.0,
+    risk_flags: [],
+    pipeline_stage: "Outreach Approved",
+    notes: "Interested in 1000 MT parboiled non-basmati rice under Irrevocable LC.",
+    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 10 }
+  },
+  {
+    lead_id: "LID-C3857B19",
+    company_name: "Bavaria Gourmet Foods GmbH",
+    country: "Germany",
+    city: "Munich",
+    website: "https://www.bavaria-gourmet.example.de",
+    product_category: "Cardamom, Black Pepper & Turmeric",
+    contact_name: "Klaus Weber",
+    job_title: "Senior Sourcing Manager",
+    business_email: "klaus.weber@bavaria-gourmet.example.de",
+    phone_number: "+49 89 55443322",
+    source: "Indo-German Chamber of Commerce Directory",
+    source_url: "https://indo-german.example.org/directory/food-importers",
+    import_evidence: "EU TRACES registered organic importer; regular attendee at BioFach Nuremberg trade fair.",
+    verification_status: "Verified",
+    buyer_score: 95.0,
+    risk_flags: [],
+    pipeline_stage: "Discovered",
+    notes: "High quality specifications required: pesticide residues strictly adhering to EU MRL limits.",
+    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 10 }
+  },
+  {
+    lead_id: "LID-2E542A36",
+    company_name: "Tokyo Nippon Spices KK",
+    country: "Japan",
+    city: "Tokyo",
+    website: "https://www.nipponspices.example.jp",
+    product_category: "Organic Spices & Turmeric",
+    contact_name: "Kenji Sato",
+    job_title: "Purchasing General Manager",
+    business_email: "k.sato@nipponspices.example.jp",
+    phone_number: "+81 3 5555 0199",
+    source: "Japan Food Importers Association",
+    source_url: "https://jfia.example.or.jp/members",
+    import_evidence: "Registered importer of high-grade turmeric under Japan MHLW.",
+    verification_status: "Verified",
+    buyer_score: 87.0,
+    risk_flags: [],
+    pipeline_stage: "Qualified",
+    notes: "Requires steam-sterilized spices with certificate of analysis.",
+    scores_breakdown: { identity: 15, relevance: 12, website: 15, email: 15, import_evidence: 15, independent: 15 }
+  },
+  {
+    lead_id: "LID-E185CA70",
+    company_name: "Suspicious Quick Trades LLC",
+    country: "United States",
+    city: "Miami",
+    website: "http://quicktrades-temp.biz",
+    product_category: "Any Export Commodity",
+    contact_name: "John Anonymous",
+    job_title: "Agent",
+    business_email: "quickbuyer2026@gmail.com",
+    phone_number: "+1 305 000 0000",
+    source: "Unverified Web Forum",
+    source_url: "http://trade-forum-leads.example.com",
+    import_evidence: null,
+    verification_status: "Unverified",
+    buyer_score: 55.0,
+    risk_flags: ["FLAG_FREE_EMAIL_DOMAIN", "FLAG_NO_DIRECT_IMPORT_EVIDENCE"],
+    pipeline_stage: "Lost / Rejected",
+    notes: "Demands upfront supplier registration fee of $500 before sending purchase order.",
+    scores_breakdown: { identity: 15, relevance: 12, website: 11, email: 2, import_evidence: 0, independent: 15 }
+  }
+];
+
+const PIPELINE_STAGES = [
+  "Discovered",
+  "Verification Pending",
+  "Verified Candidate",
+  "Qualified",
+  "Outreach Approved",
+  "Email Sent",
+  "Buyer Replied",
+  "Requirements Received",
+  "Quotation Prepared",
+  "Negotiation",
+  "Purchase Order Received",
+  "Payment Verification",
+  "Order Confirmed",
+  "Completed",
+  "Lost / Rejected"
+];
+
+export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<"directory" | "pipeline" | "queue" | "risk">("directory");
+  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState("ALL");
+  const [selectedTier, setSelectedTier] = useState("ALL");
+
+  // Metrics
+  const totalLeads = leads.length;
+  const verifiedCount = leads.filter(l => l.verification_status === "Verified").length;
+  const highPriorityCount = leads.filter(l => l.buyer_score >= 80).length;
+  const potentialCount = leads.filter(l => l.buyer_score >= 60 && l.buyer_score < 80).length;
+  const highRiskCount = leads.filter(l => l.buyer_score < 60 || l.risk_flags.length > 0).length;
+  const queuedOutreachCount = leads.filter(l => l.pipeline_stage === "Outreach Approved").length;
+
+  const filteredLeads = leads.filter(l => {
+    const matchesSearch = 
+      l.company_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.country.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.product_category.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesCountry = selectedCountry === "ALL" || l.country === selectedCountry;
+    
+    const matchesTier = 
+      selectedTier === "ALL" ||
+      (selectedTier === "HIGH" && l.buyer_score >= 80) ||
+      (selectedTier === "POTENTIAL" && l.buyer_score >= 60 && l.buyer_score < 80) ||
+      (selectedTier === "LOW" && l.buyer_score < 60);
+
+    return matchesSearch && matchesCountry && matchesTier;
+  });
+
+  const countries = Array.from(new Set(leads.map(l => l.country)));
+
+  return (
+    <div className="flex min-h-screen bg-slate-900 text-slate-100">
+      {/* Sidebar Navigation */}
+      <aside className="w-64 border-r border-slate-800 bg-slate-950 p-6 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-8">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
+              <Globe className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="font-bold text-base tracking-tight text-white">IMPEX AI</h1>
+              <p className="text-xs text-emerald-400 font-medium">Buyer Engine v1.0</p>
+            </div>
+          </div>
+
+          <nav className="space-y-1.5">
+            <button
+              onClick={() => setActiveTab("directory")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "directory"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              Buyer Directory
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
+                {totalLeads}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("pipeline")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "pipeline"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              15-Stage CRM Pipeline
+            </button>
+
+            <button
+              onClick={() => setActiveTab("queue")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "queue"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              Review Queue (Mode A)
+              {queuedOutreachCount > 0 && (
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {queuedOutreachCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab("risk")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "risk"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Payment Risk & Safety
+            </button>
+          </nav>
+        </div>
+
+        <div className="pt-6 border-t border-slate-800">
+          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-xs font-semibold text-slate-200">Mode A: Assisted</span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Human approval required before email dispatch & financial commitments.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Pane */}
+      <main className="flex-1 flex flex-col overflow-y-auto">
+        {/* Top Header */}
+        <header className="border-b border-slate-800 bg-slate-950/60 backdrop-blur px-8 py-5 flex items-center justify-between sticky top-0 z-20">
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              {activeTab === "directory" && "International Buyer Discovery & Evidence"}
+              {activeTab === "pipeline" && "15-Stage CRM Deal Pipeline"}
+              {activeTab === "queue" && "Assisted Outreach Approval Queue (Mode A)"}
+              {activeTab === "risk" && "Transaction & Payment Risk Guardian"}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Primary KPI: Verified Buyers → Qualified Inquiries → Quotations → Confirmed Orders
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <span>100-Pt Verification Engine: Active</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Primary KPI Ribbon */}
+        <div className="p-8 pb-4">
+          <div className="grid grid-cols-4 gap-4">
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
+              <span className="text-xs font-medium text-slate-400">Total Leads Discovered</span>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-2xl font-bold text-white">{totalLeads}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  {Math.round((verifiedCount / totalLeads) * 100)}% Verified
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Target: 500 records/day capacity</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
+              <span className="text-xs font-medium text-slate-400">High-Priority Candidates</span>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-2xl font-bold text-emerald-400">{highPriorityCount}</span>
+                <span className="text-xs text-slate-400">Score 80–100</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Ready for personalized outreach</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
+              <span className="text-xs font-medium text-slate-400">Potential Candidates</span>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-2xl font-bold text-amber-400">{potentialCount}</span>
+                <span className="text-xs text-slate-400">Score 60–79</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Requires secondary registry check</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
+              <span className="text-xs font-medium text-slate-400">High-Risk / Quarantined</span>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-2xl font-bold text-rose-400">{highRiskCount}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                  Outreach Blocked
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Flagged for free email or anomaly</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab 1: Buyer Directory & Verification Table */}
+        {activeTab === "directory" && (
+          <div className="p-8 pt-2 space-y-4">
+            {/* Filter Bar */}
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by company name, country, or product category..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+
+              <select
+                value={selectedCountry}
+                onChange={(e) => setSelectedCountry(e.target.value)}
+                className="px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="ALL">All Countries</option>
+                {countries.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedTier}
+                onChange={(e) => setSelectedTier(e.target.value)}
+                className="px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="ALL">All Qualification Tiers</option>
+                <option value="HIGH">High Priority (80–100)</option>
+                <option value="POTENTIAL">Potential (60–79)</option>
+                <option value="LOW">Low / Quarantined (&lt;60)</option>
+              </select>
+            </div>
+
+            {/* Leads Table */}
+            <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden shadow-sm">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-900/80 text-xs font-semibold uppercase text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="px-5 py-3.5">Company & Location</th>
+                    <th className="px-5 py-3.5">Product Category</th>
+                    <th className="px-5 py-3.5">Contact & Channel</th>
+                    <th className="px-5 py-3.5 text-center">Score</th>
+                    <th className="px-5 py-3.5">Status & Flags</th>
+                    <th className="px-5 py-3.5">Pipeline Stage</th>
+                    <th className="px-5 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredLeads.map((lead) => (
+                    <tr key={lead.lead_id} className="hover:bg-slate-900/50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-white">{lead.company_name}</div>
+                        <div className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                          <span>{lead.city ? `${lead.city}, ` : ""}{lead.country}</span>
+                          {lead.website && (
+                            <a
+                              href={lead.website}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-400 hover:underline flex items-center gap-0.5"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span className="font-medium text-slate-200">{lead.product_category}</span>
+                        <div className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">
+                          {lead.source}
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="text-xs font-medium text-slate-300">
+                          {lead.contact_name ? `${lead.contact_name} (${lead.job_title || "Contact"})` : "Public Corporate Desk"}
+                        </div>
+                        <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-slate-500" />
+                          <span>{lead.business_email || "No email listed"}</span>
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4 text-center">
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                          lead.buyer_score >= 80
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                            : lead.buyer_score >= 60
+                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                            : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
+                        }`}>
+                          {lead.buyer_score} / 100
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium ${
+                            lead.verification_status === "Verified"
+                              ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                              : lead.verification_status === "Partially Verified"
+                              ? "bg-amber-950 text-amber-300 border border-amber-800"
+                              : "bg-rose-950 text-rose-300 border border-rose-800"
+                          }`}>
+                            {lead.verification_status === "Verified" ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                            {lead.verification_status}
+                          </span>
+
+                          {lead.risk_flags.map(f => (
+                            <span key={f} className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-800">
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-medium">
+                          {lead.pipeline_stage}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          onClick={() => setSelectedLead(lead)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors inline-flex items-center gap-1.5"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Audit 100-Pt
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: 15-Stage CRM Deal Pipeline */}
+        {activeTab === "pipeline" && (
+          <div className="p-8 pt-2 overflow-x-auto">
+            <div className="flex gap-4 min-w-[2000px] pb-6">
+              {PIPELINE_STAGES.map((stage, idx) => {
+                const stageLeads = leads.filter(l => l.pipeline_stage === stage);
+                return (
+                  <div key={stage} className="w-72 flex-shrink-0 bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col">
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <span className="h-5 w-5 rounded-full bg-slate-800 text-[11px] font-bold text-slate-300 flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">{stage}</h4>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 font-semibold text-slate-400">
+                        {stageLeads.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto">
+                      {stageLeads.length === 0 ? (
+                        <div className="text-center py-8 text-xs text-slate-600">No prospects</div>
+                      ) : (
+                        stageLeads.map(l => (
+                          <div
+                            key={l.lead_id}
+                            onClick={() => setSelectedLead(l)}
+                            className="p-3.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/50 cursor-pointer transition-all shadow-sm"
+                          >
+                            <div className="font-semibold text-sm text-white">{l.company_name}</div>
+                            <div className="text-xs text-slate-400 mt-1">{l.country} • {l.product_category}</div>
+                            <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800/60">
+                              <span className={`text-[11px] font-bold ${l.buyer_score >= 80 ? "text-emerald-400" : "text-amber-400"}`}>
+                                Score: {l.buyer_score}
+                              </span>
+                              <span className="text-[10px] text-slate-500">{l.lead_id}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Assisted Outreach Review Queue (Mode A) */}
+        {activeTab === "queue" && (
+          <div className="p-8 pt-2 max-w-4xl space-y-6">
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-300">Mode A — Assisted Outreach Active</h4>
+                <p className="text-xs text-amber-200/80 mt-0.5">
+                  Every AI-generated business email requires visual human approval. Verify commercial terms before dispatching.
+                </p>
+              </div>
+            </div>
+
+            {leads.filter(l => l.pipeline_stage === "Outreach Approved").map(lead => (
+              <div key={lead.lead_id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 space-y-4">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                  <div>
+                    <span className="text-xs font-semibold text-emerald-400">Target Buyer</span>
+                    <h3 className="text-lg font-bold text-white">{lead.company_name} ({lead.country})</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">To: {lead.contact_name} &lt;{lead.business_email}&gt;</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+                      Qualification: {lead.buyer_score}/100
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 space-y-3 leading-relaxed border border-slate-800">
+                  <p><strong>Subject:</strong> Direct Partnership Inquiry: Premium Indian {lead.product_category} for {lead.company_name}</p>
+                  <p>Dear {lead.contact_name || "Procurement Director"},</p>
+                  <p>
+                    I hope this message finds you well in {lead.city || lead.country}. We noted {lead.company_name}&apos;s verified track record as a prominent importer of {lead.product_category} across the region.
+                  </p>
+                  <p>
+                    We are an established Indian government-registered exporter operating under APEDA & DGFT compliance, specializing in premium-grade specifications with ISO 22000 and HACCP certified processing facilities.
+                  </p>
+                  <p>
+                    We would be pleased to share our complete product catalog, COA (Certificate of Analysis), and provide sample shipments with competitive CIF pricing to your nearest port.
+                  </p>
+                  <p>Best regards,<br/>Export Management Division<br/>Indian Export Corp</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">
+                    Edit Proposal
+                  </button>
+                  <button className="px-4 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-semibold text-rose-300">
+                    Reject / Quarantine
+                  </button>
+                  <button className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2">
+                    <Send className="h-3.5 w-3.5" />
+                    Approve & Dispatch
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tab 4: Payment Risk & Transaction Safety */}
+        {activeTab === "risk" && (
+          <div className="p-8 pt-2 max-w-4xl space-y-6">
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+              <h3 className="text-base font-bold text-white mb-2">Automated Payment Term Risk Rubric</h3>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-emerald-300">
+                  <span className="font-bold block mb-1">Low Financial Risk</span>
+                  100% Advance Wire (TT) or Confirmed Irrevocable Letter of Credit (LC at Sight) issued by a Tier-1 prime bank.
+                </div>
+                <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300">
+                  <span className="font-bold block mb-1">Medium Financial Risk</span>
+                  Documentary Collection (D/P). Requires bank avalization and maritime bill of lading consigned to bank order.
+                </div>
+                <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-rose-300">
+                  <span className="font-bold block mb-1">Critical Financial Risk</span>
+                  Clean Open Account (Credit) or D/A. Blocked automatically without formal ECGC export credit insurance underwriting.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl bg-slate-950 border border-slate-800">
+              <h4 className="text-sm font-bold text-white mb-3">Detected Fraud Flags & Anomalies</h4>
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-slate-900 border border-rose-500/30 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-4 w-4 text-rose-400" />
+                    <div>
+                      <div className="text-xs font-bold text-white">Suspicious Quick Trades LLC (LID-E185CA70)</div>
+                      <div className="text-[11px] text-rose-300">Trigger: Free personal email (@gmail.com) + Upfront tender registration fee request</div>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800">
+                    QUARANTINED
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 100-Point Verification Details Modal */}
+        {selectedLead && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl">
+              <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+                <div>
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">100-Point Verification Audit</span>
+                  <h3 className="text-xl font-bold text-white mt-0.5">{selectedLead.company_name}</h3>
+                  <p className="text-xs text-slate-400">{selectedLead.city ? `${selectedLead.city}, ` : ""}{selectedLead.country} • ID: {selectedLead.lead_id}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-2xl font-black ${selectedLead.buyer_score >= 80 ? "text-emerald-400" : "text-amber-400"}`}>
+                    {selectedLead.buyer_score}
+                  </span>
+                  <span className="text-xs text-slate-500 block">/ 100 Points</span>
+                </div>
+              </div>
+
+              {/* Rubric Breakdown Grid */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">1. Company Identity & Registration</span>
+                    <span className="text-emerald-400">{selectedLead.scores_breakdown?.identity ?? 20} / 20</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Verified legal entity existence in public corporate directory.</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">2. Product & Industry Relevance</span>
+                    <span className="text-emerald-400">{selectedLead.scores_breakdown?.relevance ?? 20} / 20</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Direct match with exporter&apos;s commodity category and buyer role.</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">3. Website & Identity Consistency</span>
+                    <span className="text-emerald-400">{selectedLead.scores_breakdown?.website ?? 15} / 15</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Valid corporate domain, HTTPS/TLS alive check confirmed.</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">4. Business Email Verification</span>
+                    <span className={selectedLead.scores_breakdown?.email === 2 ? "text-rose-400" : "text-emerald-400"}>
+                      {selectedLead.scores_breakdown?.email ?? 15} / 15
+                    </span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Domain MX records and corporate mailbox existence checked.</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">5. Import / Purchasing Evidence</span>
+                    <span className={selectedLead.scores_breakdown?.import_evidence === 0 ? "text-rose-400" : "text-emerald-400"}>
+                      {selectedLead.scores_breakdown?.import_evidence ?? 15} / 15
+                    </span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Documented import licenses, customs clearance, or buyer meet history.</p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+                  <div className="flex justify-between font-semibold mb-1">
+                    <span className="text-slate-300">6. Independent Evidence</span>
+                    <span className="text-emerald-400">{selectedLead.scores_breakdown?.independent ?? 10} / 15</span>
+                  </div>
+                  <p className="text-slate-500 text-[11px]">Chamber of commerce, phone directory, or professional verification.</p>
+                </div>
+              </div>
+
+              {/* Evidence Attribution & Audit Log */}
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <span className="text-xs font-bold text-slate-300 block">Supporting Evidence & Data Provenance</span>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  <strong>Source:</strong> {selectedLead.source}
+                </p>
+                {selectedLead.source_url && (
+                  <p className="text-xs text-slate-400 truncate">
+                    <strong>Evidence URL:</strong> <a href={selectedLead.source_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">{selectedLead.source_url}</a>
+                  </p>
+                )}
+                {selectedLead.import_evidence && (
+                  <p className="text-xs text-slate-400">
+                    <strong>Import Evidence:</strong> {selectedLead.import_evidence}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setSelectedLead(null)}
+                  className="px-5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                >
+                  Close Audit View
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
