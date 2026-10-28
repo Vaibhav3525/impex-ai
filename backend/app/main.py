@@ -1,11 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import init_db
 from app.api import api_router
 
-# Initialize Database Schema
-Base.metadata.create_all(bind=engine)
+# Initialize Database Schema on load
+init_db()
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -39,3 +39,4 @@ def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
+

@@ -99,3 +99,4 @@ def ingest_lead(db: Session, lead_in: LeadCreate) -> Tuple[Lead, bool]:
     db.commit()
     db.refresh(new_lead)
     return new_lead, True
+

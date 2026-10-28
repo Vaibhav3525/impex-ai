@@ -72,3 +72,4 @@ def test_lead_ingestion_and_deduplication():
         assert log.total_score == lead_1.buyer_score
     finally:
         db.close()
+

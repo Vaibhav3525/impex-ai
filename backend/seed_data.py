@@ -75,7 +75,7 @@ SAMPLE_BUYERS = [
 
 def run_seed():
     db = SessionLocal()
-    print("🌱 Seeding realistic test international buyer leads...")
+    print("[INFO] Seeding realistic test international buyer leads...")
     try:
         for buyer_data in SAMPLE_BUYERS:
             lead, is_created = ingest_lead(db, buyer_data)
@@ -86,9 +86,10 @@ def run_seed():
             log = run_lead_verification(db, lead)
             print(f"   -> Verification: {lead.verification_status} | Score: {lead.buyer_score}/100 | Flags: {lead.risk_flags}")
             print(f"   -> Risk Level: {log.risk_level}")
-        print("\n✅ Seeding complete. All initial records verified and logged.")
+        print("\n[SUCCESS] Seeding complete. All initial records verified and logged.")
     finally:
         db.close()
 
 if __name__ == "__main__":
     run_seed()
+

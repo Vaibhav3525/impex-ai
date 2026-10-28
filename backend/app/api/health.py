@@ -23,3 +23,4 @@ def health_check(db: Session = Depends(get_db)):
         "ai_provider": settings.AI_PROVIDER,
         "outreach_mode": settings.DEFAULT_OUTREACH_MODE,
     }
+

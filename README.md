@@ -90,3 +90,4 @@ Dashboard UI will be live at: `http://localhost:3000`
 2. **Authorized Sources Only**: Strictly respects robots.txt, platform terms, and public domain data rules.
 3. **Opt-Out & Suppression**: Permanent suppression list prevents unwanted contact.
 4. **Human in the Loop**: High-risk payment terms and first outreach campaigns require manual human authorization.
+

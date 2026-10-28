@@ -1,6 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey, Numeric
 from app.core.database import Base
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class Deal(Base):
     __tablename__ = "deals"
@@ -38,8 +41,8 @@ class Deal(Base):
     # Status & Audit
     assigned_to = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
 class BuyerReply(Base):
@@ -53,7 +56,7 @@ class BuyerReply(Base):
     from_email = Column(String(255), nullable=False)
     subject = Column(String(500), nullable=False)
     raw_body = Column(Text, nullable=False)
-    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    received_at = Column(DateTime, default=utc_now, nullable=False)
     
     # 11-Class Response Category
     # 1. Interested Buyer, 2. Request for Quotation, 3. Request for Specs, 4. Samples,
@@ -73,3 +76,4 @@ class BuyerReply(Base):
     # Human Review Status
     reviewed_by_human = Column(String(50), default="PENDING") # PENDING, APPROVED, OVERRIDDEN
     human_notes = Column(Text, nullable=True)
+

@@ -43,3 +43,4 @@ graph TD
 1. **Free Email Trigger**: Any business inquiry originating from an unverified public domain (@gmail, @yahoo, etc.) loses 15 verification points and is flagged with `FLAG_FREE_EMAIL_DOMAIN`.
 2. **Offshore Bank Mismatch**: If an inquiry requests shipment to Country A but payment from an unrelated third-party entity in Country B, it is flagged with `FLAG_THIRD_PARTY_PAYER`.
 3. **Suspicious Upfront Tender Fees**: Any buyer requesting registration fees or notarization fees to bid on a supply contract is flagged with `FLAG_ADVANCE_FEE_SCAM` and quarantined immediately.
+

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, HttpUrl, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class LeadBase(BaseModel):
     company_name: str = Field(..., description="Legal or trading name of the buyer company")
@@ -50,11 +50,11 @@ class LeadResponse(LeadBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LeadPagination(BaseModel):
     total: int
     page: int
     page_size: int
     items: List[LeadResponse]
+

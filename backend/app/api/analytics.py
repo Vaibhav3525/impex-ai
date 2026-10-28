@@ -67,3 +67,4 @@ def get_dashboard_metrics(db: Session = Depends(get_db)):
         "top_countries": [{"country": c[0], "count": c[1]} for c in top_countries],
         "top_products": [{"product": p[0], "count": p[1]} for p in top_products],
     }
+

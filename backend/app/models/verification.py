@@ -1,7 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class VerificationLog(Base):
     __tablename__ = "verification_logs"
@@ -37,4 +40,5 @@ class VerificationLog(Base):
     # Verification Meta
     verified_by = Column(String(50), default="automated_engine") # automated_engine | human_reviewer
     evidence_summary = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+

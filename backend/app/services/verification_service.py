@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from app.models.lead import Lead
@@ -132,10 +132,11 @@ def run_lead_verification(db: Session, lead: Lead) -> VerificationLog:
     lead.buyer_score = total_score
     lead.verification_status = status
     lead.risk_flags = detected_flags
-    lead.last_verified = datetime.utcnow()
+    lead.last_verified = datetime.now(timezone.utc)
     if status == "Verified" and lead.pipeline_stage == "Discovered":
         lead.pipeline_stage = "Verified Candidate"
 
     db.commit()
     db.refresh(lead)
     return log
+

@@ -1,6 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, Index
 from app.core.database import Base
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class Lead(Base):
     __tablename__ = "leads"
@@ -42,10 +45,11 @@ class Lead(Base):
     dedup_hash = Column(String(64), unique=True, index=True, nullable=False) # sha256(company_normalized + domain/country)
     
     # Audit Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     __table_args__ = (
         Index("idx_lead_country_product", "country", "product_category"),
         Index("idx_lead_score_status", "buyer_score", "verification_status"),
     )
+

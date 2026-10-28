@@ -96,3 +96,4 @@ def trigger_verification(lead_id: str, db: Session = Depends(get_db)):
             "summary": log.evidence_summary
         }
     }
+

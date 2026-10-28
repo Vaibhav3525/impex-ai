@@ -68,3 +68,4 @@ Every raw record ingested into the system is normalized into the following stand
   "notes": "Verified corporate registration against Brønnøysundregistrene (Org nr: 987654321)."
 }
 ```
+
