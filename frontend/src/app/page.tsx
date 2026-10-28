@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -184,6 +185,36 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("ALL");
   const [selectedTier, setSelectedTier] = useState("ALL");
+  const [liveConnected, setLiveConnected] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const liveLeads = await api.getLeads({ limit: 100 });
+        if (liveLeads && liveLeads.length > 0) {
+          // Augment with default scores_breakdown if missing
+          const formatted = liveLeads.map((l: any) => ({
+            ...l,
+            risk_flags: l.risk_flags || [],
+            scores_breakdown: l.scores_breakdown || {
+              identity: Math.round(l.buyer_score * 0.2),
+              relevance: Math.round(l.buyer_score * 0.2),
+              website: Math.round(l.buyer_score * 0.15),
+              email: Math.round(l.buyer_score * 0.15),
+              import_evidence: Math.round(l.buyer_score * 0.15),
+              independent: Math.round(l.buyer_score * 0.15),
+            }
+          }));
+          setLeads(formatted);
+          setLiveConnected(true);
+        }
+      } catch (err) {
+        // Fallback gracefully to demo dataset
+        console.info("Live backend not connected. Using local dataset.");
+      }
+    }
+    loadData();
+  }, []);
 
   // Metrics
   const totalLeads = leads.length;
@@ -316,6 +347,17 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
+            {liveConnected ? (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Live API Connected ({totalLeads} Leads)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
+                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                <span>Demo Mode</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
               <span>100-Pt Verification Engine: Active</span>
