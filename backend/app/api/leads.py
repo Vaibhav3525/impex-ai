@@ -176,7 +176,7 @@ def verify_batch_leads(
     if req.only_unverified:
         query = query.filter(Lead.verification_status == "Unverified")
 
-    leads_to_process = query.order_by(Lead.created_at.asc()).limit(req.limit).all()
+    leads_to_process = query.order_by(Lead.created_at.desc()).limit(req.limit).all()
 
     verified_count = 0
     partially_verified_count = 0
