@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     DEFAULT_OUTREACH_MODE: str = "assisted"  # "assisted" (Mode A) | "automated" (Mode B)
     ENABLE_AUTO_FOLLOWUPS: bool = False
 
+    # External Trade APIs
+    UN_COMTRADE_API_KEY: str = ""
+    APEDA_PORTAL_USER: str = ""
+    DGFT_PORTAL_USER: str = ""
+
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
