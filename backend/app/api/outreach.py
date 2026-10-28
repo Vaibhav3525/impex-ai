@@ -1,11 +1,12 @@
 """
-Day 10 — Mode A Assisted Outreach & AI Email Queue API Router
+Day 10 & Day 11 — Mode A Assisted Outreach, Grounded AI Email Queue, & SMTP Dispatch API
 PRD §6 & §10: Grounded email outreach workflow.
 All generated emails require explicit human review and approval before dispatch.
+Rate-limited SMTP transmission, hard-bounce auto-suppression, and delivery metrics.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -24,6 +25,11 @@ from app.schemas.outreach import (
     OutreachQueueSummary,
 )
 from app.services.email_composer import compose_grounded_email
+from app.services.smtp_service import (
+    send_outreach_email,
+    dispatch_approved_emails,
+    get_send_window_metrics,
+)
 
 router = APIRouter(prefix="/outreach", tags=["Outreach & AI Personalization"])
 
@@ -251,3 +257,47 @@ def add_to_suppression_list(
     db.commit()
     db.refresh(new_supp)
     return new_supp
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. SMTP Dispatch & Rate-Limited Transmission Endpoints (Day 11)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/stats")
+def get_outreach_send_stats(db: Session = Depends(get_db)):
+    """
+    Returns real-time dispatch volume vs hourly and daily rate limits.
+    """
+    return get_send_window_metrics(db)
+
+
+@router.post("/emails/{email_id}/send")
+def dispatch_single_email(
+    email_id: str,
+    bypass_rate_limits: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    Dispatches a single approved email via SMTP.
+    Enforces Mode A approval validation, suppression check, and rate caps.
+    """
+    res = send_outreach_email(db, email_id, bypass_rate_limits=bypass_rate_limits)
+    if not res.get("success"):
+        raise HTTPException(
+            status_code=400 if "Violation" in res.get("error", "") or "suppression" in res.get("error", "") else 429,
+            detail=res.get("error")
+        )
+    return res
+
+
+@router.post("/dispatch-batch")
+def dispatch_approved_batch(
+    max_emails: Optional[int] = Query(None, ge=1, le=50, description="Max emails to dispatch in this batch"),
+    bypass_rate_limits: bool = False,
+    db: Session = Depends(get_db),
+):
+    """
+    Batches and dispatches pending approved emails up to remaining hourly/daily quota.
+    """
+    return dispatch_approved_emails(db, max_emails=max_emails, bypass_rate_limits=bypass_rate_limits)
