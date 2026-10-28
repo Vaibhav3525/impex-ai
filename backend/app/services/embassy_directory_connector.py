@@ -168,3 +168,4 @@ class EmbassyDirectoryConnector:
                 ))
 
         return results
+

@@ -247,6 +247,37 @@ export const api = {
       method: "POST",
     }),
 
+  // Autonomous Cadence & Follow-Ups (PRD §7)
+  getCadenceStatus: () =>
+    request<{
+      touch_1_sent: number;
+      touch_2_queued_or_approved: number;
+      touch_2_sent: number;
+      touch_3_queued_or_approved: number;
+      touch_3_sent: number;
+      replied_and_halted: number;
+      suppressed_and_halted: number;
+      total_active_cadences: number;
+    }>("/outreach/followups/status"),
+  processDueFollowups: (params: { min_days?: number; force_advance?: boolean; limit?: number }) =>
+    request<{
+      eligible_leads: number;
+      generated_count: number;
+      generated_emails: any[];
+      skipped_reasons: any[];
+    }>("/outreach/followups/process", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+  scheduleLeadNextFollowup: (leadId: string, force: boolean = false, minDays: number = 4) =>
+    request<any>(`/outreach/followups/${leadId}/schedule-next?force=${force}&min_days=${minDays}`, {
+      method: "POST",
+    }),
+  cancelLeadFollowups: (leadId: string, reason: string = "Manual Halt") =>
+    request<any>(`/outreach/followups/${leadId}/cancel?reason=${encodeURIComponent(reason)}`, {
+      method: "POST",
+    }),
+
   // Replies & Inbound Intelligence
   getReplies: (params?: { classification?: string; reviewed_status?: string }) => {
     const q = new URLSearchParams();

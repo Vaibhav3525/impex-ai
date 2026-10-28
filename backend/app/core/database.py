@@ -30,6 +30,13 @@ def init_db():
                     if "risk_level" not in cols:
                         conn.exec_driver_sql("ALTER TABLE leads ADD COLUMN risk_level VARCHAR(20) DEFAULT 'LOW'")
                     conn.commit()
+
+                cursor_outreach = conn.exec_driver_sql("PRAGMA table_info(outreach_emails)")
+                outreach_cols = {row[1] for row in cursor_outreach.fetchall()}
+                if "id" in outreach_cols:
+                    if "scheduled_for" not in outreach_cols:
+                        conn.exec_driver_sql("ALTER TABLE outreach_emails ADD COLUMN scheduled_for DATETIME")
+                    conn.commit()
             except Exception:
                 pass
 

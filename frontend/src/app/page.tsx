@@ -20,7 +20,12 @@ import {
   Sparkles,
   Layers,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  Clock,
+  ArrowRight,
+  Zap,
+  XCircle,
+  MessageSquare,
 } from "lucide-react";
 
 interface Lead {
@@ -41,6 +46,7 @@ interface Lead {
   buyer_score: number;
   risk_flags: string[];
   pipeline_stage: string;
+  outreach_status?: string;
   notes: string | null;
   scores_breakdown?: {
     identity: number;
@@ -229,9 +235,82 @@ export default function Dashboard() {
     }
   };
 
+  // Follow-Up Cadence State (PRD §7)
+  const [cadenceStatus, setCadenceStatus] = useState<any>(null);
+  const [cadenceLoading, setCadenceLoading] = useState(false);
+  const [cadenceResult, setCadenceResult] = useState<any>(null);
+  const [simLeadId, setSimLeadId] = useState("");
+  const [simReplyType, setSimReplyType] = useState("RFQ");
+  const [simulatingReply, setSimulatingReply] = useState(false);
+  const [simReplyResult, setSimReplyResult] = useState<any>(null);
+
+  const loadCadenceStatus = async () => {
+    try {
+      const st = await api.getCadenceStatus();
+      setCadenceStatus(st);
+    } catch (e) {
+      console.info("Could not fetch cadence status:", e);
+    }
+  };
+
+  const handleProcessFollowups = async () => {
+    setCadenceLoading(true);
+    setCadenceResult(null);
+    try {
+      const res = await api.processDueFollowups({ min_days: 4, force_advance: true, limit: 50 });
+      setCadenceResult(res);
+      await loadCadenceStatus();
+      const refreshed = await api.getLeads({ limit: 100 });
+      if (refreshed && refreshed.length > 0) setLeads(refreshed as any);
+    } catch (e) {
+      console.error("Cadence process error:", e);
+    } finally {
+      setCadenceLoading(false);
+    }
+  };
+
+  const handleSimulateInboundReply = async () => {
+    if (!simLeadId) return;
+    setSimulatingReply(true);
+    setSimReplyResult(null);
+    try {
+      const targetLead = leads.find(l => l.lead_id === simLeadId);
+      const email = targetLead?.business_email || "buyer@procurement-dept.com";
+
+      let subject = "Re: Export Inquiry";
+      let raw_body = "";
+      if (simReplyType === "RFQ") {
+        subject = "RFQ: Official Price Quote Required for Basmati Rice";
+        raw_body = "Hello. We reviewed your export specifications. Please submit your best CIF quotation for 500 MT of 1121 Basmati Rice to Jebel Ali port. Payment 100% LC at sight.";
+      } else if (simReplyType === "SAMPLES") {
+        subject = "Request for Lab Samples & CoA";
+        raw_body = "Dear Export Desk, please courier 1kg physical sample kit along with full Certificate of Analysis and MRL pesticide report to our Dubai facility.";
+      } else {
+        subject = "Please Remove Us from Mailing List";
+        raw_body = "We are not interested in sourcing commodities from your firm. Please unsubscribe our email address and stop sending follow-ups.";
+      }
+
+      const res = await api.processIncomingReply({
+        lead_id: simLeadId,
+        from_email: email,
+        subject,
+        raw_body,
+      });
+      setSimReplyResult(res);
+      await loadCadenceStatus();
+      const refreshed = await api.getLeads({ limit: 100 });
+      if (refreshed && refreshed.length > 0) setLeads(refreshed as any);
+    } catch (e) {
+      console.error("Simulate reply error:", e);
+    } finally {
+      setSimulatingReply(false);
+    }
+  };
+
   useEffect(() => {
     async function loadData() {
       try {
+        loadCadenceStatus();
         const liveLeads = await api.getLeads({ limit: 100 });
         if (liveLeads && liveLeads.length > 0) {
           // Augment with default scores_breakdown if missing
@@ -831,63 +910,239 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Tab 3: Assisted Outreach Review Queue (Mode A) */}
+        {/* Tab 3: Assisted Outreach Review Queue & Cadence Orchestration (PRD §7 & §10) */}
         {activeTab === "queue" && (
-          <div className="p-8 pt-2 max-w-4xl space-y-6">
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-bold text-amber-300">Mode A — Assisted Outreach Active</h4>
-                <p className="text-xs text-amber-200/80 mt-0.5">
-                  Every AI-generated business email requires visual human approval. Verify commercial terms before dispatching.
-                </p>
+          <div className="p-8 pt-2 max-w-5xl space-y-6">
+            {/* Mode A Banner */}
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-bold text-amber-300">Mode A — Assisted Outreach & 3-Touch Cadence Engine</h4>
+                  <p className="text-xs text-amber-200/80 mt-0.5">
+                    PRD §7 & §10: 3-touch sequence (Day 0 Intro → Day 4 Samples & Specs → Day 8 Final Check). Auto-halts immediately on buyer response.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleProcessFollowups}
+                disabled={cadenceLoading}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2 whitespace-nowrap"
+              >
+                {cadenceLoading ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Scanning Cadences...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-3.5 w-3.5 text-amber-300" />
+                    <span>Run Cadence Scheduler</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Cadence Funnel Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">Touch 1 (Day 0)</span>
+                  <Send className="h-4 w-4 text-blue-400" />
+                </div>
+                <div className="text-2xl font-black text-white mt-1">
+                  {cadenceStatus?.touch_1_sent ?? 0}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">Initial Introductions Sent</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">Touch 2 (Day 4)</span>
+                  <Clock className="h-4 w-4 text-amber-400" />
+                </div>
+                <div className="text-2xl font-black text-white mt-1">
+                  {cadenceStatus?.touch_2_queued_or_approved ?? 0} <span className="text-xs font-normal text-slate-400">due</span> / {cadenceStatus?.touch_2_sent ?? 0} <span className="text-xs font-normal text-slate-400">sent</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">Sample / CoA Follow-up</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">Touch 3 (Day 8)</span>
+                  <CheckCircle2 className="h-4 w-4 text-purple-400" />
+                </div>
+                <div className="text-2xl font-black text-white mt-1">
+                  {cadenceStatus?.touch_3_queued_or_approved ?? 0} <span className="text-xs font-normal text-slate-400">due</span> / {cadenceStatus?.touch_3_sent ?? 0} <span className="text-xs font-normal text-slate-400">sent</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">Final Closing Inquiry</div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">Auto-Halted</span>
+                  <MessageSquare className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div className="text-2xl font-black text-emerald-400 mt-1">
+                  {cadenceStatus?.replied_and_halted ?? 0} <span className="text-xs font-normal text-slate-400">replied</span> / {cadenceStatus?.suppressed_and_halted ?? 0} <span className="text-xs font-normal text-slate-400">opted-out</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">Subsequent Touches Stopped</div>
               </div>
             </div>
 
-            {leads.filter(l => l.pipeline_stage === "Outreach Approved").map(lead => (
-              <div key={lead.lead_id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div>
-                    <span className="text-xs font-semibold text-emerald-400">Target Buyer</span>
-                    <h3 className="text-lg font-bold text-white">{lead.company_name} ({lead.country})</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">To: {lead.contact_name} &lt;{lead.business_email}&gt;</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
-                      Qualification: {lead.buyer_score}/100
-                    </span>
-                  </div>
+            {/* Cadence Scheduler Run Feedback */}
+            {cadenceResult && (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                  <span>
+                    Scheduler Executed: Generated <strong>{cadenceResult.generated_count}</strong> follow-up emails for review queue. 
+                    Checked <strong>{cadenceResult.eligible_leads}</strong> active leads.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Inbound Buyer Reply & Auto-Halt Simulator */}
+            <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-emerald-400" />
+                  <h4 className="text-sm font-bold text-white">Inbound Reply & Cadence Auto-Halt Simulator</h4>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  11-Class AI Entity Extractor
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Simulate an incoming response from a prospective international buyer to verify instant cadence halting, 11-class intent classification, and CRM pipeline progression:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Select Responding Buyer</label>
+                  <select
+                    value={simLeadId}
+                    onChange={(e) => setSimLeadId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="">-- Choose a Buyer Lead --</option>
+                    {leads.slice(0, 15).map(l => (
+                      <option key={l.lead_id} value={l.lead_id}>
+                        {l.company_name} ({l.country})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 space-y-3 leading-relaxed border border-slate-800">
-                  <p><strong>Subject:</strong> Direct Partnership Inquiry: Premium Indian {lead.product_category} for {lead.company_name}</p>
-                  <p>Dear {lead.contact_name || "Procurement Director"},</p>
-                  <p>
-                    I hope this message finds you well in {lead.city || lead.country}. We noted {lead.company_name}&apos;s verified track record as a prominent importer of {lead.product_category} across the region.
-                  </p>
-                  <p>
-                    We are an established Indian government-registered exporter operating under APEDA & DGFT compliance, specializing in premium-grade specifications with ISO 22000 and HACCP certified processing facilities.
-                  </p>
-                  <p>
-                    We would be pleased to share our complete product catalog, COA (Certificate of Analysis), and provide sample shipments with competitive CIF pricing to your nearest port.
-                  </p>
-                  <p>Best regards,<br/>Export Management Division<br/>Indian Export Corp</p>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">Simulated Reply Intent</label>
+                  <select
+                    value={simReplyType}
+                    onChange={(e) => setSimReplyType(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="RFQ">Request for Quotation (500 MT CIF Jebel Ali, LC)</option>
+                    <option value="SAMPLES">Request for Samples (1kg physical test kit & CoA)</option>
+                    <option value="OPTOUT">Unsubscribe / Not Interested (Auto-Suppression)</option>
+                  </select>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">
-                    Edit Proposal
-                  </button>
-                  <button className="px-4 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-semibold text-rose-300">
-                    Reject / Quarantine
-                  </button>
-                  <button className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2">
-                    <Send className="h-3.5 w-3.5" />
-                    Approve & Dispatch
+                <div className="flex items-end">
+                  <button
+                    onClick={handleSimulateInboundReply}
+                    disabled={!simLeadId || simulatingReply}
+                    className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/20"
+                  >
+                    {simulatingReply ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Classifying Reply...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" />
+                        <span>Simulate Buyer Reply</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-            ))}
+
+              {simReplyResult && (
+                <div className="p-3.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Classified Intent: {simReplyResult.classification} ({(simReplyResult.confidence_score * 100).toFixed(0)}% confidence)
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700">
+                      CADENCE AUTO-HALTED
+                    </span>
+                  </div>
+                  <div className="text-slate-300">
+                    <strong>Recommended Action:</strong> {simReplyResult.extracted_next_action}
+                  </div>
+                  {simReplyResult.extracted_delivery_port && (
+                    <div className="text-slate-400">
+                      <strong>Extracted Delivery Port:</strong> {simReplyResult.extracted_delivery_port} • <strong>Payment:</strong> {simReplyResult.extracted_payment_method || "LC at Sight"}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Mode A Pending Emails Review List */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Pending Mode A Outreach & Follow-Up Reviews
+              </h4>
+
+              {leads.filter(l => l.pipeline_stage === "Outreach Approved" || l.outreach_status?.includes("Queued")).slice(0, 5).map(lead => (
+                <div key={lead.lead_id} className="rounded-xl border border-slate-800 bg-slate-950 p-6 space-y-4">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                    <div>
+                      <span className="text-xs font-semibold text-emerald-400">Target Buyer</span>
+                      <h3 className="text-lg font-bold text-white">{lead.company_name} ({lead.country})</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">To: {lead.contact_name} &lt;{lead.business_email}&gt;</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+                        Qualification: {lead.buyer_score}/100
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 space-y-3 leading-relaxed border border-slate-800">
+                    <p><strong>Subject:</strong> Direct Partnership Inquiry: Premium Indian {lead.product_category} for {lead.company_name}</p>
+                    <p>Dear {lead.contact_name || "Procurement Director"},</p>
+                    <p>
+                      I hope this message finds you well in {lead.city || lead.country}. We noted {lead.company_name}&apos;s verified track record as a prominent importer of {lead.product_category} across the region.
+                    </p>
+                    <p>
+                      We are an established Indian government-registered exporter operating under APEDA & DGFT compliance, specializing in premium-grade specifications with ISO 22000 and HACCP certified processing facilities.
+                    </p>
+                    <p>
+                      We would be pleased to share our complete product catalog, COA (Certificate of Analysis), and provide sample shipments with competitive CIF pricing to your nearest port.
+                    </p>
+                    <p>Best regards,<br/>Export Management Division<br/>Indian Export Corp</p>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">
+                      Edit Proposal
+                    </button>
+                    <button className="px-4 py-2 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-semibold text-rose-300">
+                      Reject / Quarantine
+                    </button>
+                    <button className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 flex items-center gap-2">
+                      <Send className="h-3.5 w-3.5" />
+                      Approve & Dispatch
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

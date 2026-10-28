@@ -23,12 +23,22 @@ from app.schemas.outreach import (
     SuppressionCreate,
     SuppressionResponse,
     OutreachQueueSummary,
+    FollowupProcessRequest,
+    FollowupCadenceSummary,
+    CadenceFunnelStatus,
 )
 from app.services.email_composer import compose_grounded_email
 from app.services.smtp_service import (
     send_outreach_email,
     dispatch_approved_emails,
     get_send_window_metrics,
+)
+from app.services.followup_service import (
+    process_all_due_followups,
+    get_cadence_pipeline_status,
+    generate_next_followup_email,
+    cancel_pending_followups_for_lead,
+    is_lead_eligible_for_followup,
 )
 
 router = APIRouter(prefix="/outreach", tags=["Outreach & AI Personalization"])
@@ -301,3 +311,98 @@ def dispatch_approved_batch(
     Batches and dispatches pending approved emails up to remaining hourly/daily quota.
     """
     return dispatch_approved_emails(db, max_emails=max_emails, bypass_rate_limits=bypass_rate_limits)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. Autonomous Follow-Up Cadence Engine (PRD §7)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/followups/status", response_model=CadenceFunnelStatus)
+def get_cadence_status(db: Session = Depends(get_db)):
+    """
+    PRD §7: Returns real-time metrics across all 3 cadence touches:
+    Touch 1 Sent -> Touch 2 Follow-Up -> Touch 3 Closing Inquiry -> Replied / Suppressed.
+    """
+    return get_cadence_pipeline_status(db)
+
+
+@router.post("/followups/process", response_model=FollowupCadenceSummary)
+def process_due_followups_endpoint(
+    req: FollowupProcessRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    PRD §7: Autonomous Cadence Orchestrator.
+    Scans for leads whose next follow-up touch (Touch 2 after 4 days, Touch 3 after 8 days)
+    is due and creates grounded follow-up emails in the review queue.
+    """
+    res = process_all_due_followups(
+        db=db,
+        min_days=req.min_days,
+        force_advance=req.force_advance,
+        limit=req.limit,
+    )
+    return FollowupCadenceSummary(
+        eligible_leads=res["eligible_leads"],
+        generated_count=res["generated_count"],
+        generated_emails=res["generated_emails"],
+        skipped_reasons=res["skipped_reasons"],
+    )
+
+
+@router.post("/followups/{lead_id}/schedule-next", response_model=OutreachEmailResponse)
+def schedule_lead_next_followup(
+    lead_id: str,
+    force: bool = Query(False, description="Bypass elapsed cadence interval (for testing or urgent touch)"),
+    min_days: int = Query(4, ge=0, le=30, description="Minimum days required between touches"),
+    custom_instructions: Optional[str] = Query(None, description="Optional custom commercial note"),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually triggers generation of the next grounded follow-up sequence for a specific lead.
+    """
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead '{lead_id}' not found.")
+
+    eligible, reason = is_lead_eligible_for_followup(lead, db)
+    if not eligible:
+        raise HTTPException(status_code=400, detail=f"Lead not eligible for follow-up: {reason}")
+
+    email_obj = generate_next_followup_email(
+        db=db,
+        lead_id=lead_id,
+        min_days=min_days,
+        force=force,
+        custom_instructions=custom_instructions,
+    )
+    if not email_obj:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Follow-up not generated. Required interval ({min_days} days) may not have elapsed yet."
+        )
+
+    return email_obj
+
+
+@router.post("/followups/{lead_id}/cancel")
+def cancel_lead_followups(
+    lead_id: str,
+    reason: str = Query("Manual Cancellation", description="Reason for stopping cadence"),
+    db: Session = Depends(get_db),
+):
+    """
+    Manually halts and suppresses all active/queued follow-ups for a specific lead.
+    """
+    lead = db.query(Lead).filter(Lead.lead_id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail=f"Lead '{lead_id}' not found.")
+
+    cancelled = cancel_pending_followups_for_lead(db, lead_id, reason=reason)
+    return {
+        "lead_id": lead_id,
+        "cancelled_count": cancelled,
+        "status": "Halted",
+        "reason": reason,
+    }
+

@@ -36,6 +36,7 @@ class OutreachEmailResponse(BaseModel):
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
     sent_at: Optional[datetime] = None
+    scheduled_for: Optional[datetime] = None
     error_message: Optional[str] = None
     confidence_score: float
     grounding_evidence: List[str]
@@ -64,4 +65,26 @@ class OutreachQueueSummary(BaseModel):
     total_rejected: int
     total_sent: int
     pending_emails: List[OutreachEmailResponse]
+
+class FollowupProcessRequest(BaseModel):
+    min_days: int = Field(4, ge=0, le=30, description="Minimum days elapsed before next sequence is eligible (default: 4)")
+    force_advance: bool = Field(False, description="Bypass elapsed time check for testing or immediate follow-up")
+    limit: int = Field(50, ge=1, le=200, description="Max candidate leads to process in this run")
+
+class FollowupCadenceSummary(BaseModel):
+    eligible_leads: int
+    generated_count: int
+    generated_emails: List[OutreachEmailResponse]
+    skipped_reasons: List[Dict[str, Any]]
+
+class CadenceFunnelStatus(BaseModel):
+    touch_1_sent: int
+    touch_2_queued_or_approved: int
+    touch_2_sent: int
+    touch_3_queued_or_approved: int
+    touch_3_sent: int
+    replied_and_halted: int
+    suppressed_and_halted: int
+    total_active_cadences: int
+
 

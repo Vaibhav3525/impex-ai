@@ -17,7 +17,7 @@ REPLY_CLASSES = [
 ]
 
 class IncomingReplyRequest(BaseModel):
-    lead_id: str = Field(..., description="Lead ID of the responding buyer")
+    lead_id: Optional[str] = Field(None, description="Lead ID of the responding buyer (auto-matched by from_email if omitted)")
     from_email: str = Field(..., description="Sender email address")
     subject: str = Field(..., description="Subject line of incoming response")
     raw_body: str = Field(..., description="Raw email text body received from buyer")

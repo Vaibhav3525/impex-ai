@@ -171,3 +171,4 @@ def test_embassy_and_linkedin_api_endpoints(db_session):
     li_res = generate_linkedin_xray_queries(li_req)
     assert "individual_xray_query" in li_res
     assert "Procurement" in li_res["individual_xray_query"]
+

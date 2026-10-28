@@ -66,6 +66,7 @@ class OutreachEmail(Base):
 
     # Dispatch & Delivery Info
     sent_at = Column(DateTime, nullable=True)
+    scheduled_for = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
 
     # Verification & Grounding Evidence Audit

@@ -19,6 +19,7 @@ from sqlalchemy import desc
 from app.core.database import get_db
 from app.models.lead import Lead
 from app.models.deal import BuyerReply
+from app.models.outreach import SuppressionList
 from app.schemas.reply import (
     REPLY_CLASSES,
     IncomingReplyRequest,
@@ -26,6 +27,7 @@ from app.schemas.reply import (
     BuyerReplyResponse,
 )
 from app.services.reply_classifier import classify_buyer_reply
+from app.services.followup_service import cancel_pending_followups_for_lead
 
 router = APIRouter(prefix="/replies", tags=["Reply Intelligence & Processing"])
 
@@ -37,17 +39,47 @@ def process_incoming_reply(
 ):
     """
     Ingests an incoming buyer email response.
-    1. Executes 11-class intent classification
-    2. Extracts structured entities (product, quantity, target price, delivery port, payment method)
-    3. Persists record to BuyerReply table
-    4. Automatically advances Lead in CRM pipeline
+    1. Resolves lead by lead_id or from_email
+    2. Executes 11-class intent classification
+    3. Extracts structured entities (product, quantity, target price, delivery port, payment method)
+    4. Auto-halts and cancels all pending/queued follow-up outreach for this lead
+    5. Persists record to BuyerReply table
+    6. Automatically advances Lead in CRM pipeline
+    7. Adds sender to suppression list if 'Not Interested' or 'Potential Scam'
     """
-    lead = db.query(Lead).filter(Lead.lead_id == req.lead_id).first()
+    lead = None
+    if req.lead_id:
+        lead = db.query(Lead).filter(Lead.lead_id == req.lead_id).first()
+
+    if not lead and req.from_email:
+        clean_email = req.from_email.lower().strip()
+        lead = db.query(Lead).filter(Lead.business_email.ilike(clean_email)).first()
+
     if not lead:
-        raise HTTPException(status_code=404, detail=f"Lead with ID '{req.lead_id}' not found.")
+        identifier = req.lead_id or req.from_email
+        raise HTTPException(status_code=404, detail=f"Lead with identifier '{identifier}' not found.")
 
     # Classify & Extract Entities
     result = classify_buyer_reply(subject=req.subject, raw_body=req.raw_body)
+
+    # Immediately halt all pending/queued follow-ups
+    cancel_pending_followups_for_lead(
+        db=db,
+        lead_id=lead.lead_id,
+        reason=f"Buyer Replied ({result.classification})"
+    )
+
+    # Handle opt-out / scam suppression
+    if result.classification in ("Not Interested", "Potential Scam"):
+        norm_email = req.from_email.lower().strip()
+        existing_supp = db.query(SuppressionList).filter(SuppressionList.email == norm_email).first()
+        if not existing_supp:
+            supp = SuppressionList(
+                email=norm_email,
+                reason="Unsubscribe" if result.classification == "Not Interested" else "Spam Complaint",
+                notes=f"Auto-suppressed via reply classifier: {result.classification}"
+            )
+            db.add(supp)
 
     # Save to database
     reply_obj = BuyerReply(
@@ -69,7 +101,13 @@ def process_incoming_reply(
     db.add(reply_obj)
 
     # Advance Lead in CRM
-    lead.outreach_status = "Replied"
+    if result.classification == "Not Interested":
+        lead.outreach_status = "Opted-Out"
+    elif result.classification == "Potential Scam":
+        lead.outreach_status = "Suppressed"
+    else:
+        lead.outreach_status = "Replied"
+
     lead.pipeline_stage = result.suggested_pipeline_stage
     lead.updated_at = datetime.now(timezone.utc)
 
