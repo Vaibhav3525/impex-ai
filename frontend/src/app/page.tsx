@@ -26,6 +26,14 @@ import {
   Zap,
   XCircle,
   MessageSquare,
+  Package,
+  Plus,
+  Trash2,
+  SlidersHorizontal,
+  Award,
+  Scale,
+  FileText,
+  X,
 } from "lucide-react";
 
 interface Lead {
@@ -185,7 +193,127 @@ const PIPELINE_STAGES = [
 ];
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<"directory" | "discovery" | "pipeline" | "queue" | "risk" | "analytics">("directory");
+  const [activeTab, setActiveTab] = useState<"directory" | "discovery" | "catalog" | "pipeline" | "queue" | "risk" | "analytics">("directory");
+
+  // Exporter Catalog & Live Matching State
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [matchingLoading, setMatchingLoading] = useState(false);
+  const [matchSummary, setMatchSummary] = useState<any>(null);
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [selectedMatchExplanation, setSelectedMatchExplanation] = useState<any>(null);
+
+  // New Product Form State
+  const [productForm, setProductForm] = useState({
+    product_name: "",
+    product_category: "Agricultural Commodities & Grains",
+    hs_code: "",
+    specifications: "",
+    grade: "",
+    origin_country: "India",
+    available_quantity: "200 MT / month",
+    packaging: "25kg / 50kg PP Bags",
+    moq: "1x20ft Container (20 MT)",
+    target_price_min: 1200,
+    target_price_max: 1450,
+    currency: "USD",
+    incoterms: "FOB",
+    preferred_payment_terms: "100% LC at Sight / 30% Advance + 70% against BL",
+    target_countries: "United Arab Emirates, Saudi Arabia, Germany, United Kingdom, United States",
+    excluded_countries: "",
+    certifications: "APEDA, FSSAI, ISO 22000, HACCP",
+  });
+
+  const loadProducts = async () => {
+    setLoadingProducts(true);
+    try {
+      const prods = await api.getProducts();
+      setProducts(prods);
+      if (prods.length > 0 && !selectedProduct) {
+        setSelectedProduct(prods[0]);
+      }
+    } catch (e) {
+      console.error("Failed to load products:", e);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const handleRunMatching = async (prod: any) => {
+    setSelectedProduct(prod);
+    setMatchingLoading(true);
+    setMatchSummary(null);
+    try {
+      const res = await api.matchLeadsForProduct(prod.profile_id, 50, 0);
+      setMatchSummary(res);
+      setActionSuccessMsg(`Matched ${res.qualified_leads_count} qualified international buyers for "${prod.product_name}"!`);
+    } catch (e: any) {
+      console.error("Match error:", e);
+    } finally {
+      setMatchingLoading(false);
+    }
+  };
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productForm.product_name.trim()) return;
+    setSavingProduct(true);
+    try {
+      const payload = {
+        product_name: productForm.product_name.trim(),
+        product_category: productForm.product_category,
+        hs_code: productForm.hs_code.trim() || null,
+        specifications: productForm.specifications.trim() || null,
+        grade: productForm.grade.trim() || null,
+        origin_country: productForm.origin_country.trim() || "India",
+        available_quantity: productForm.available_quantity.trim() || null,
+        packaging: productForm.packaging.trim() || null,
+        moq: productForm.moq.trim() || null,
+        target_price_min: productForm.target_price_min ? Number(productForm.target_price_min) : null,
+        target_price_max: productForm.target_price_max ? Number(productForm.target_price_max) : null,
+        currency: productForm.currency,
+        incoterms: productForm.incoterms,
+        preferred_payment_terms: productForm.preferred_payment_terms,
+        target_countries: productForm.target_countries
+          ? productForm.target_countries.split(",").map(s => s.trim()).filter(Boolean)
+          : [],
+        excluded_countries: productForm.excluded_countries
+          ? productForm.excluded_countries.split(",").map(s => s.trim()).filter(Boolean)
+          : [],
+        certifications: productForm.certifications
+          ? productForm.certifications.split(",").map(s => s.trim()).filter(Boolean)
+          : [],
+        export_readiness: true,
+        is_active: true,
+      };
+      const created = await api.createProduct(payload);
+      setActionSuccessMsg(`Added "${created.product_name}" to Exporter Catalog!`);
+      setShowAddProductModal(false);
+      await loadProducts();
+      await handleRunMatching(created);
+    } catch (err: any) {
+      console.error("Create product failed:", err);
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string, name: string) => {
+    if (!confirm(`Remove "${name}" from your exporter catalog?`)) return;
+    try {
+      await api.deleteProduct(productId);
+      setActionSuccessMsg(`Product "${name}" removed from catalog.`);
+      if (selectedProduct?.profile_id === productId) {
+        setSelectedProduct(null);
+        setMatchSummary(null);
+      }
+      await loadProducts();
+    } catch (err) {
+      console.error("Delete product error:", err);
+    }
+  };
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -477,6 +605,7 @@ export default function Dashboard() {
           loadKanban(),
           loadQueue("Queued"),
           loadHighRisk(),
+          loadProducts(),
         ]);
       } catch (err) {
         console.info("Live backend connection note:", err);
@@ -555,6 +684,24 @@ export default function Dashboard() {
               Lead Discovery Hub
               <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
                 Auto
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("catalog");
+                loadProducts();
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "catalog"
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Package className="h-4 w-4" />
+              Exporter Catalog
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 font-semibold">
+                {products.length > 0 ? `${products.length}` : "5"}
               </span>
             </button>
 
@@ -640,13 +787,16 @@ export default function Dashboard() {
             <h2 className="text-xl font-bold text-white tracking-tight">
               {activeTab === "directory" && "International Buyer Discovery & Evidence"}
               {activeTab === "discovery" && "Autonomous Multi-Channel Lead Discovery Hub"}
+              {activeTab === "catalog" && "Exporter Product Catalog & AI Buyer Matching Engine"}
               {activeTab === "pipeline" && "15-Stage CRM Deal Pipeline"}
               {activeTab === "queue" && "Assisted Outreach Approval Queue (Mode A)"}
               {activeTab === "risk" && "Transaction & Payment Risk Guardian"}
               {activeTab === "analytics" && "Executive Performance & DGFT Audit Analytics"}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Primary KPI: Verified Buyers → Qualified Inquiries → Quotations → Confirmed Orders
+              {activeTab === "catalog"
+                ? "Configure export specifications & run 100-point matching algorithms against 42 verified international buyers"
+                : "Primary KPI: Verified Buyers → Qualified Inquiries → Quotations → Confirmed Orders"}
             </p>
           </div>
 
@@ -899,6 +1049,331 @@ export default function Dashboard() {
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Exporter Product Catalog & AI Buyer Matching Engine */}
+        {activeTab === "catalog" && (
+          <div className="p-8 pt-2 space-y-6 pb-20">
+            {/* Top Banner & Control Bar */}
+            <div className="flex items-center justify-between bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-xl">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Package className="h-5 w-5 text-emerald-400" />
+                  Exporter Product Catalog & Specifications
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Configure your export commodities, HS codes, and MOQs. Run 100-point matching algorithms against 42 verified international buyers.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowAddProductModal(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Add Export Commodity</span>
+                </button>
+                <button
+                  onClick={loadProducts}
+                  disabled={loadingProducts}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingProducts ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Exporter Commodities Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {products.map((prod) => {
+                const isSelected = selectedProduct?.profile_id === prod.profile_id;
+                const isMatching = matchingLoading && isSelected;
+
+                return (
+                  <div
+                    key={prod.profile_id}
+                    className={`rounded-2xl border p-5 flex flex-col justify-between transition-all shadow-md ${
+                      isSelected
+                        ? "bg-slate-950/95 border-emerald-500/50 shadow-emerald-500/10 ring-1 ring-emerald-500/30"
+                        : "bg-slate-950/80 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div>
+                      {/* Category & Status */}
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                          {prod.product_category}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+                          <span className="text-[11px] font-semibold text-emerald-400">Active</span>
+                          <button
+                            onClick={() => handleDeleteProduct(prod.profile_id, prod.product_name)}
+                            className="p-1 rounded hover:bg-rose-950/60 text-slate-500 hover:text-rose-400 transition-colors ml-2"
+                            title="Delete commodity"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Product Name & ID */}
+                      <h4 className="text-base font-bold text-white tracking-tight">{prod.product_name}</h4>
+                      <div className="flex items-center gap-2 mt-1 mb-3 text-xs text-slate-400 font-mono">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-emerald-400 text-[10px]">
+                          {prod.profile_id}
+                        </span>
+                        {prod.hs_code && <span>HS: {prod.hs_code}</span>}
+                      </div>
+
+                      {/* Spec Badges Grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-4">
+                        <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-slate-500 text-[10px] block uppercase font-bold">MOQ</span>
+                          <span className="font-semibold text-slate-200 truncate block">{prod.moq || "Flexible"}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-slate-500 text-[10px] block uppercase font-bold">Target Price</span>
+                          <span className="font-semibold text-emerald-400 truncate block">
+                            {prod.target_price_min && prod.target_price_max
+                              ? `$${prod.target_price_min}–$${prod.target_price_max} / ${prod.incoterms}`
+                              : `${prod.currency} (${prod.incoterms})`}
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-slate-500 text-[10px] block uppercase font-bold">Capacity</span>
+                          <span className="font-semibold text-slate-200 truncate block">{prod.available_quantity || "On Request"}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80">
+                          <span className="text-slate-500 text-[10px] block uppercase font-bold">Packaging</span>
+                          <span className="font-semibold text-slate-200 truncate block">{prod.packaging || "Export Bulk"}</span>
+                        </div>
+                      </div>
+
+                      {/* Target Markets */}
+                      {prod.target_countries && prod.target_countries.length > 0 && (
+                        <div className="mb-3">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
+                            Target Markets ({prod.target_countries.length})
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {prod.target_countries.slice(0, 4).map((c: string) => (
+                              <span key={c} className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                📍 {c}
+                              </span>
+                            ))}
+                            {prod.target_countries.length > 4 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-500 font-bold">
+                                +{prod.target_countries.length - 4} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Certifications */}
+                      {prod.certifications && prod.certifications.length > 0 && (
+                        <div className="mb-4">
+                          <div className="flex flex-wrap gap-1">
+                            {prod.certifications.map((cert: string) => (
+                              <span key={cert} className="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                🛡️ {cert}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Match Action Button */}
+                    <button
+                      onClick={() => handleRunMatching(prod)}
+                      disabled={isMatching}
+                      className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                        isSelected && matchSummary
+                          ? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25"
+                          : "bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-200 border border-slate-700"
+                      }`}
+                    >
+                      {isMatching ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+                          <span>Evaluating 42 Buyers...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className={`h-3.5 w-3.5 ${isSelected ? "text-amber-400" : "text-emerald-400"}`} />
+                          <span>{isSelected && matchSummary ? "Re-Run Buyer Matching" : "Run Live Buyer Matching"}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Live Matching Results Pane */}
+            {selectedProduct && (
+              <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Live AI Matching Results</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[11px] font-mono text-slate-300 border border-slate-700">
+                        {selectedProduct.product_name}
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-white mt-1">
+                      Candidate Buyer Ranking & 100-Point Qualification Standings
+                    </h3>
+                  </div>
+
+                  {matchSummary && (
+                    <div className="flex items-center gap-3">
+                      <div className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+                        <span className="text-slate-400">Total Evaluated: </span>
+                        <strong className="text-white">{matchSummary.total_leads_evaluated} Leads</strong>
+                      </div>
+                      <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400">
+                        <span>Qualified: </span>
+                        <strong className="font-bold">{matchSummary.qualified_leads_count} Verified Buyers</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Loading state */}
+                {matchingLoading && (
+                  <div className="p-12 text-center space-y-3">
+                    <RefreshCw className="h-8 w-8 text-emerald-400 animate-spin mx-auto" />
+                    <p className="text-sm font-semibold text-slate-200">
+                      Evaluating 42 verified buyers against {selectedProduct.product_name}...
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Executing 5-factor compatibility model: Product Relevance (30), Country Alignment (25), Verified Import Evidence (20), Contact Quality (15), and Verification Standing (10).
+                    </p>
+                  </div>
+                )}
+
+                {/* Matches Table */}
+                {!matchingLoading && matchSummary && (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-x-auto">
+                      <table className="w-full text-left text-sm text-slate-300">
+                        <thead className="bg-slate-900 text-xs font-semibold uppercase text-slate-400 border-b border-slate-800">
+                          <tr>
+                            <th className="px-5 py-3.5">Matched Buyer & Country</th>
+                            <th className="px-5 py-3.5 text-center">Composite Score</th>
+                            <th className="px-5 py-3.5 text-center">5-Factor Breakdown</th>
+                            <th className="px-5 py-3.5">Qualification Rationale</th>
+                            <th className="px-5 py-3.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {matchSummary.top_matches.map((m: any) => {
+                            const isHigh = m.qualification_score >= 80;
+                            const isPot = m.qualification_score >= 60 && m.qualification_score < 80;
+
+                            return (
+                              <tr key={m.lead_id} className="hover:bg-slate-900/80 transition-colors">
+                                <td className="px-5 py-4">
+                                  <div className="font-semibold text-white">{m.company_name}</div>
+                                  <div className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                    <span>📍 {m.country}</span>
+                                    <span className="text-[10px] font-mono text-slate-500">({m.lead_id})</span>
+                                  </div>
+                                </td>
+
+                                <td className="px-5 py-4 text-center">
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black ${
+                                    isHigh
+                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                                      : isPot
+                                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+                                      : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
+                                  }`}>
+                                    <span>{m.qualification_score}</span>
+                                    <span className="text-[10px] font-normal text-slate-400">/ 100</span>
+                                  </div>
+                                  <span className="block text-[10px] font-semibold text-slate-400 mt-1">
+                                    {m.qualification_tier}
+                                  </span>
+                                </td>
+
+                                <td className="px-5 py-4">
+                                  <div className="flex items-center justify-center gap-1 text-[10px]">
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300" title="Product Relevance (Max 30)">
+                                      Rel: {m.breakdown.product_relevance_score}/30
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300" title="Country Alignment (Max 25)">
+                                      Mkt: {m.breakdown.country_alignment_score}/25
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300" title="Import Evidence (Max 20)">
+                                      Imp: {m.breakdown.import_evidence_score}/20
+                                    </span>
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300" title="Contact Quality (Max 15)">
+                                      Ctc: {m.breakdown.contact_quality_score}/15
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-5 py-4 max-w-md">
+                                  <p className="text-xs text-slate-300 leading-snug line-clamp-2">
+                                    {m.explanation}
+                                  </p>
+                                  <div className="text-[11px] text-emerald-400 font-semibold mt-1 flex items-center gap-1">
+                                    <span>👉 Action:</span>
+                                    <span className="text-slate-300 font-normal">{m.recommended_action}</span>
+                                  </div>
+                                </td>
+
+                                <td className="px-5 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => setSelectedMatchExplanation(m)}
+                                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                                      title="View 5-factor itemized score details"
+                                    >
+                                      Breakdown
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const lead = leads.find(l => l.lead_id === m.lead_id);
+                                        if (lead) setSelectedLead(lead);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 transition-colors inline-flex items-center gap-1"
+                                      title="Open full 100-pt evidence audit"
+                                    >
+                                      <Eye className="h-3 w-3" />
+                                      <span>Audit</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt to run matching if not run yet */}
+                {!matchingLoading && !matchSummary && (
+                  <div className="p-8 text-center bg-slate-900/50 rounded-xl border border-dashed border-slate-800 space-y-2">
+                    <p className="text-sm font-semibold text-slate-300">
+                      Click &ldquo;Run Live Buyer Matching&rdquo; above to evaluate this commodity against all 42 international buyers.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      The matching algorithm validates HS code compatibility, destination country priorities, verified import volumes, and direct procurement contacts.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1940,6 +2415,321 @@ export default function Dashboard() {
                 <button
                   onClick={() => setSelectedLead(null)}
                   className="px-5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition-colors"
+                >
+                  Close Audit View
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Export Commodity Modal */}
+        {showAddProductModal && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+                <div>
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Catalog Configuration</span>
+                  <h3 className="text-xl font-bold text-white mt-0.5">Add Export Commodity Line</h3>
+                  <p className="text-xs text-slate-400">Configure specifications, HS code, MOQs, and target countries for automated matching.</p>
+                </div>
+                <button
+                  onClick={() => setShowAddProductModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateProduct} className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Export Commodity Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Organic Black Pepper Malabar TGSEB"
+                      value={productForm.product_name}
+                      onChange={(e) => setProductForm({ ...productForm, product_name: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Industry Category *</label>
+                    <select
+                      value={productForm.product_category}
+                      onChange={(e) => setProductForm({ ...productForm, product_category: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="Agricultural Commodities & Grains">Agricultural Commodities & Grains</option>
+                      <option value="Spices & Seasonings">Spices & Seasonings</option>
+                      <option value="Black Tea & Coffee">Black Tea & Coffee</option>
+                      <option value="Textiles & Cotton Yarn">Textiles & Cotton Yarn</option>
+                      <option value="Engineering Goods & Castings">Engineering Goods & Castings</option>
+                      <option value="Chemicals, Dyes & Minerals">Chemicals, Dyes & Minerals</option>
+                      <option value="Pharmaceuticals & Herbal Extracts">Pharmaceuticals & Herbal Extracts</option>
+                      <option value="Ceramic Tiles & Sanitaryware">Ceramic Tiles & Sanitaryware</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">HS Code (6–8 Digits)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 0904.11.10"
+                      value={productForm.hs_code}
+                      onChange={(e) => setProductForm({ ...productForm, hs_code: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Minimum Order Qty (MOQ)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1x20ft FCL (15 MT)"
+                      value={productForm.moq}
+                      onChange={(e) => setProductForm({ ...productForm, moq: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Available Supply Capacity</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 200 MT / Month"
+                      value={productForm.available_quantity}
+                      onChange={(e) => setProductForm({ ...productForm, available_quantity: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Target Price Min ($)</label>
+                    <input
+                      type="number"
+                      placeholder="1200"
+                      value={productForm.target_price_min}
+                      onChange={(e) => setProductForm({ ...productForm, target_price_min: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Target Price Max ($)</label>
+                    <input
+                      type="number"
+                      placeholder="1450"
+                      value={productForm.target_price_max}
+                      onChange={(e) => setProductForm({ ...productForm, target_price_max: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Incoterms</label>
+                    <select
+                      value={productForm.incoterms}
+                      onChange={(e) => setProductForm({ ...productForm, incoterms: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="FOB">FOB (Free on Board)</option>
+                      <option value="CIF">CIF (Cost, Insurance & Freight)</option>
+                      <option value="CFR">CFR (Cost and Freight)</option>
+                      <option value="EXW">EXW (Ex Works)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">Currency</label>
+                    <select
+                      value={productForm.currency}
+                      onChange={(e) => setProductForm({ ...productForm, currency: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                      <option value="AED">AED (د.إ)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Specifications & Quality Grade</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Moisture < 11%, Density 550g/l, Piperine 5.5% min, Sortex Cleaned"
+                    value={productForm.specifications}
+                    onChange={(e) => setProductForm({ ...productForm, specifications: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Packaging Options</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 25kg multi-wall paper bags with inner poly liner / master cartons"
+                    value={productForm.packaging}
+                    onChange={(e) => setProductForm({ ...productForm, packaging: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Preferred Payment Security Terms</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 100% Irrevocable LC at Sight / 30% Advance + 70% against BL scan"
+                    value={productForm.preferred_payment_terms}
+                    onChange={(e) => setProductForm({ ...productForm, preferred_payment_terms: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Priority Target Countries (comma-separated)</label>
+                  <input
+                    type="text"
+                    placeholder="United Arab Emirates, Saudi Arabia, Germany, United Kingdom, United States"
+                    value={productForm.target_countries}
+                    onChange={(e) => setProductForm({ ...productForm, target_countries: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1">Exporter Certifications (comma-separated)</label>
+                  <input
+                    type="text"
+                    placeholder="APEDA, Spices Board, FSSAI, BRC Food, US FDA, ISO 22000"
+                    value={productForm.certifications}
+                    onChange={(e) => setProductForm({ ...productForm, certifications: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProductModal(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingProduct}
+                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                  >
+                    {savingProduct ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Saving Commodity...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Save & Run Matching</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Match Scoring Breakdown Modal */}
+        {selectedMatchExplanation && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-xl bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">AI Buyer Qualification Audit</span>
+                  <h3 className="text-lg font-bold text-white mt-0.5">{selectedMatchExplanation.company_name}</h3>
+                  <p className="text-xs text-slate-400">📍 {selectedMatchExplanation.country} • Matched Product: {selectedMatchExplanation.product_name}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black text-emerald-400">
+                    {selectedMatchExplanation.qualification_score}
+                  </span>
+                  <span className="text-xs text-slate-500 block">/ 100 Points</span>
+                </div>
+              </div>
+
+              {/* 5-Factor Score Cards */}
+              <div className="space-y-2 text-xs">
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-slate-200 block">1. Product Relevance & Category Overlap</span>
+                    <span className="text-slate-500 text-[11px]">Semantic category match & commodity keyword alignment</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {selectedMatchExplanation.breakdown.product_relevance_score} / 30
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-slate-200 block">2. Target Country & Geo-Market Alignment</span>
+                    <span className="text-slate-500 text-[11px]">Matches exporter&apos;s priority international target destinations</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {selectedMatchExplanation.breakdown.country_alignment_score} / 25
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-slate-200 block">3. Verified Import & Purchasing Evidence</span>
+                    <span className="text-slate-500 text-[11px]">Documented import volumes, customs clearance & trade directories</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {selectedMatchExplanation.breakdown.import_evidence_score} / 20
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-slate-200 block">4. Direct Decision Maker & Email Quality</span>
+                    <span className="text-slate-500 text-[11px]">Named procurement executive & verified corporate email domain</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {selectedMatchExplanation.breakdown.contact_quality_score} / 15
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-slate-200 block">5. Lead Verification Standing</span>
+                    <span className="text-slate-500 text-[11px]">100-point rubric verification level & absence of risk flags</span>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {selectedMatchExplanation.breakdown.verification_readiness_score} / 10
+                  </span>
+                </div>
+              </div>
+
+              {/* Rationale & Action */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <span className="text-xs font-bold text-slate-300 block">Qualification Explanation</span>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {selectedMatchExplanation.explanation}
+                </p>
+                <div className="pt-2 border-t border-slate-800/80">
+                  <span className="text-xs font-bold text-emerald-400 block mb-0.5">Recommended Commercial Action</span>
+                  <p className="text-xs text-slate-200">
+                    {selectedMatchExplanation.recommended_action}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setSelectedMatchExplanation(null)}
+                  className="px-5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white"
                 >
                   Close Audit View
                 </button>

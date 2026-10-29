@@ -231,15 +231,36 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  // Products
-  getProducts: () => request<any[]>("/products"),
+  // Products & Exporter Profiles
+  getProducts: (activeOnly: boolean = false) =>
+    request<any[]>(`/products?active_only=${activeOnly}`),
+  getProduct: (productId: string) =>
+    request<any>(`/products/${productId}`),
   createProduct: (data: any) =>
     request<any>("/products", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  matchLeadsForProduct: (productId: string, limit: number = 50) =>
-    request<any[]>(`/products/${productId}/match-leads?limit=${limit}`, {
+  updateProduct: (productId: string, data: any) =>
+    request<any>(`/products/${productId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteProduct: (productId: string) =>
+    request<any>(`/products/${productId}`, {
+      method: "DELETE",
+    }),
+  matchLeadsForProduct: (productId: string, limit: number = 50, minScore: number = 0) =>
+    request<{
+      product_profile: any;
+      total_leads_evaluated: number;
+      qualified_leads_count: number;
+      top_matches: any[];
+    }>(`/products/${productId}/match-leads?limit=${limit}&min_score=${minScore}`, {
+      method: "POST",
+    }),
+  qualifyLeadAgainstProduct: (leadId: string, productId: string) =>
+    request<any>(`/leads/${leadId}/qualify/${productId}`, {
       method: "POST",
     }),
 
