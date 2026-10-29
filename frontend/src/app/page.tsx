@@ -513,9 +513,9 @@ export default function Dashboard() {
   const countries = Array.from(new Set(leads.map(l => l.country)));
 
   return (
-    <div className="flex min-h-screen bg-slate-900 text-slate-100">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-900 text-slate-100">
       {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-950 p-6 flex flex-col justify-between">
+      <aside className="w-64 h-full shrink-0 border-r border-slate-800 bg-slate-950 p-6 flex flex-col justify-between overflow-y-auto">
         <div>
           <div className="flex items-center gap-3 mb-8">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
@@ -633,9 +633,9 @@ export default function Dashboard() {
       </aside>
 
       {/* Main Content Pane */}
-      <main className="flex-1 flex flex-col overflow-y-auto">
+      <main className="flex-1 h-full min-w-0 flex flex-col overflow-y-auto overflow-x-hidden">
         {/* Top Header */}
-        <header className="border-b border-slate-800 bg-slate-950/60 backdrop-blur px-8 py-5 flex items-center justify-between sticky top-0 z-20">
+        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-8 py-5 flex items-center justify-between sticky top-0 z-20 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               {activeTab === "directory" && "International Buyer Discovery & Evidence"}
@@ -690,7 +690,7 @@ export default function Dashboard() {
         )}
 
         {/* Primary KPI Ribbon */}
-        <div className="p-8 pb-4">
+        <div className="p-8 pb-4 shrink-0">
           <div className="grid grid-cols-4 gap-4">
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 shadow-sm">
               <span className="text-xs font-medium text-slate-400">Total Leads Discovered</span>
@@ -738,7 +738,7 @@ export default function Dashboard() {
 
         {/* Tab: Autonomous Lead Discovery Hub */}
         {activeTab === "discovery" && (
-          <div className="p-8 pt-2 space-y-6">
+          <div className="p-8 pt-2 space-y-6 pb-20">
             <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                 <div>
@@ -906,7 +906,7 @@ export default function Dashboard() {
 
         {/* Tab 1: Buyer Directory & Verification Table */}
         {activeTab === "directory" && (
-          <div className="p-8 pt-2 space-y-4">
+          <div className="p-8 pt-2 space-y-4 pb-20">
             {/* Filter Bar */}
             <div className="flex items-center gap-3">
               <div className="relative flex-1">
@@ -944,7 +944,7 @@ export default function Dashboard() {
             </div>
 
             {/* Leads Table */}
-            <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-hidden shadow-sm">
+            <div className="rounded-xl border border-slate-800 bg-slate-950 overflow-x-auto shadow-sm">
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="bg-slate-900/80 text-xs font-semibold uppercase text-slate-400 border-b border-slate-800">
                   <tr>
@@ -1085,7 +1085,7 @@ export default function Dashboard() {
 
         {/* Tab 2: 15-Stage CRM Deal Pipeline */}
         {activeTab === "pipeline" && (
-          <div className="p-8 pt-2 overflow-x-auto space-y-4">
+          <div className="p-8 pt-2 overflow-x-auto space-y-4 pb-20">
             <div className="flex items-center justify-between bg-slate-950 p-4 rounded-xl border border-slate-800">
               <div className="flex items-center gap-3">
                 <h3 className="text-sm font-bold text-white">Full Commercial Pipeline & Kanban Board</h3>
@@ -1188,7 +1188,7 @@ export default function Dashboard() {
 
         {/* Tab 3: Assisted Outreach Review Queue & Cadence Orchestration (PRD §7 & §10) */}
         {activeTab === "queue" && (
-          <div className="p-8 pt-2 max-w-5xl space-y-6">
+          <div className="p-8 pt-2 max-w-5xl space-y-6 pb-20">
             {/* Mode A Banner */}
             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -1526,7 +1526,7 @@ export default function Dashboard() {
 
         {/* Tab 4: Payment Risk & Transaction Safety */}
         {activeTab === "risk" && (
-          <div className="p-8 pt-2 max-w-5xl space-y-6">
+          <div className="p-8 pt-2 max-w-5xl space-y-6 pb-20">
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
               <h3 className="text-base font-bold text-white mb-2">Automated Payment Term Risk Rubric</h3>
               <div className="grid grid-cols-3 gap-3 text-xs">
@@ -1600,7 +1600,7 @@ export default function Dashboard() {
 
         {/* Tab 5: Executive Performance, Financials & DGFT Audit Analytics (PRD §13) */}
         {activeTab === "analytics" && (
-          <div className="p-8 pt-2 max-w-6xl space-y-6">
+          <div className="p-8 pt-2 max-w-6xl space-y-6 pb-20">
             {/* Financial Performance Ribbon */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/60 to-slate-950 border border-emerald-500/30 shadow-xl">
@@ -1848,7 +1848,7 @@ export default function Dashboard() {
         {/* 100-Point Verification Details Modal */}
         {selectedLead && (
           <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl">
+            <div className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-start justify-between pb-4 border-b border-slate-800">
                 <div>
                   <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">100-Point Verification Audit</span>
