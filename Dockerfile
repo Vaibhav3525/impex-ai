@@ -50,5 +50,7 @@ RUN python scripts/seed_verified_real_buyers.py
 
 EXPOSE 8000
 
-# Start unified Uvicorn server (serves API at /api/v1 and Next.js frontend at /)
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start unified Uvicorn server (automatically binds to Render's dynamic $PORT or 8000)
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
+
