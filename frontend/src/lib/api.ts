@@ -3,7 +3,11 @@
  * Connects Next.js 14 Dashboard to FastAPI backend at /api/v1
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/api/v1"
+    : "http://localhost:8000/api/v1");
 
 export interface Lead {
   id: number;

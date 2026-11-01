@@ -1,0 +1,10 @@
+[build]
+  base = "frontend"
+  publish = "out"
+  command = "npm run build"
+
+# SPA Fallback routing for Next.js static export
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
