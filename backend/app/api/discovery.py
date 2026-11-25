@@ -10,6 +10,7 @@ Endpoints:
   POST /api/v1/discover/enrich-domain    — Full DNS/TLS/WHOIS/contact-page enrichment
 """
 from typing import Optional, Literal
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, HttpUrl, Field
@@ -53,6 +54,48 @@ class WebsiteResearch(BaseModel):
     source_url: HttpUrl
     finding: str = Field(min_length=20, max_length=2000)
     match_status: Literal["Confirmed", "Needs review"] = "Confirmed"
+
+
+class ContactResearch(BaseModel):
+    business_email: str = Field(min_length=5, max_length=255)
+    source_url: HttpUrl
+    finding: str = Field(min_length=20, max_length=2000)
+
+
+@router.put("/contact-research/{lead_id}")
+def save_contact_research(lead_id: str, req: ContactResearch, db: Session = Depends(get_db)):
+    """Save an operator-reviewed published email without replacing existing data.
+
+    A contact publication is provenance, not a verification approval. The normal
+    evidence and technical checks must still be run separately.
+    """
+    from app.models.lead import Lead
+    from app.core.security import reviewer_identity
+    from app.services.evidence_service import usable_source
+    email = req.business_email.strip().lower()
+    if not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}", email):
+        raise HTTPException(422, "A valid business email is required.")
+    if not usable_source(str(req.source_url)):
+        raise HTTPException(422, "Contact research requires a public source URL.")
+    lead = db.query(Lead).filter_by(lead_id=lead_id).first()
+    if not lead:
+        raise HTTPException(404, "Company was not found.")
+    if lead.business_email and lead.business_email.lower() != email:
+        raise HTTPException(409, "An existing business email must be reviewed before replacement.")
+    previous = dict(lead.contact_enrichment or {})
+    contacts = list(previous.get("reviewed_contacts") or [])
+    entry = {
+        "type": "email", "value": email, "source_url": str(req.source_url),
+        "finding": req.finding, "reviewed_by": reviewer_identity(),
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if not any(c.get("value") == email and c.get("source_url") == entry["source_url"] for c in contacts):
+        contacts.append(entry)
+    previous["reviewed_contacts"] = contacts
+    lead.business_email = email
+    lead.contact_enrichment = previous
+    db.commit()
+    return {"lead_id": lead.lead_id, "business_email": lead.business_email}
 
 
 @router.put("/website-research/{lead_id}")
