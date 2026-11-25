@@ -43,7 +43,7 @@ def _get(client, url, company_host, deadline):
         if remaining <= 0:
             raise ValueError("Company scan time limit reached")
         _validate_url(url, company_host)
-        with client.stream("GET", url, timeout=min(4, remaining)) as response:
+        with client.stream("GET", url, timeout=min(8, remaining)) as response:
             if response.is_redirect:
                 url = urljoin(url, response.headers["location"])
                 continue
@@ -100,14 +100,16 @@ def extract_contacts(html, page_url):
 
 def scan_company(website):
     result = {"checked_at": datetime.now(timezone.utc).isoformat(), "status": "No published contacts found",
-              "contacts": [], "pages": [], "errors": []}
+              "contacts": [], "pages": [], "errors": [], "scanned_website": website}
     if not website:
         result["status"] = "Company website needed"
         return result
     if not website.startswith(("http://", "https://")):
         website = "https://" + website
+    if website.startswith("http://"):
+        website = "https://" + website[7:]
     company_host = _host(website)
-    deadline = time.monotonic() + 18
+    deadline = time.monotonic() + 30
     seen = set()
     with httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=False, trust_env=False) as client:
         try:
@@ -141,9 +143,9 @@ def scan_company(website):
                     result["contacts"].extend(contacts)
                     pending.extend(link for link in links if link not in seen)
                 except (httpx.HTTPError, ValueError, OSError) as exc:
-                    result["errors"].append(type(exc).__name__)
+                    result["errors"].append(str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
         except (httpx.HTTPError, ValueError, OSError) as exc:
-            result["errors"].append(type(exc).__name__)
+            result["errors"].append(str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
     unique = {(c["type"], c["value"]): c for c in result["contacts"]}
     result["contacts"] = list(unique.values())[:30]
     if result["contacts"]:
@@ -153,16 +155,33 @@ def scan_company(website):
     return result
 
 
-def enrich_contact_batch(db: Session, limit=4):
+def enrich_contact_batch(db: Session, limit=4, retry_before=None):
     names = [source.name for source in DIRECTORIES]
     leads = db.query(Lead).filter(Lead.source.in_(names)).order_by(Lead.id).all()
-    pending = [lead for lead in leads if not lead.contact_enrichment]
+    def needs_scan(lead):
+        previous = lead.contact_enrichment
+        if not previous:
+            return True
+        if previous.get("scanned_website", lead.website) != lead.website:
+            return True
+        if previous.get("status") == "Company website needed" and lead.website:
+            return True
+        if retry_before and previous.get("status") == "Website scan incomplete":
+            checked = datetime.fromisoformat(previous["checked_at"])
+            if checked.tzinfo is None:
+                checked = checked.replace(tzinfo=timezone.utc)
+            return checked < retry_before
+        return False
+
+    pending = [lead for lead in leads if needs_scan(lead)]
     selected = pending[:limit]
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(scan_company, [lead.website for lead in selected]))
     updated = with_contacts = 0
     for lead, result in zip(selected, results):
         db.refresh(lead)
+        if (lead.contact_enrichment or {}).get("website_evidence"):
+            result["website_evidence"] = lead.contact_enrichment["website_evidence"]
         emails = [c["value"] for c in result["contacts"] if c["type"] == "email"
                   and ROLE_EMAIL.match(c["value"].split("@")[0])
                   and _host("https://" + c["value"].split("@")[1]) == _host(lead.website or "")]

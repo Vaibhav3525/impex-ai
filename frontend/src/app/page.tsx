@@ -53,6 +53,7 @@ interface Lead {
     status: string;
     checked_at: string;
     contacts: { type: string; value: string; source_url: string }[];
+    website_evidence?: { website: string; source_url: string; finding: string };
   } | null;
   source: string;
   source_url: string | null;
@@ -384,14 +385,15 @@ export default function Dashboard() {
   const [enrichmentLoading, setEnrichmentLoading] = useState(false);
   const [enrichmentMessage, setEnrichmentMessage] = useState("");
 
-  const handleEnrichContacts = async () => {
+  const handleEnrichContacts = async (retryIncomplete = false) => {
     setEnrichmentLoading(true);
     let processed = 0;
     let updated = 0;
+    const retryBefore = retryIncomplete ? new Date().toISOString() : undefined;
     try {
       let remaining = 1;
       while (remaining > 0) {
-        const result = await api.enrichContacts();
+        const result = await api.enrichContacts(retryBefore);
         processed += result.processed;
         updated += result.updated;
         remaining = result.remaining;
@@ -843,13 +845,18 @@ export default function Dashboard() {
               {publicDiscoveryMessage && <p aria-live="polite" className="text-sm text-slate-300">{publicDiscoveryMessage}</p>}
               <button
                 type="button"
-                onClick={handleEnrichContacts}
+                onClick={() => handleEnrichContacts()}
                 disabled={enrichmentLoading || publicDiscoveryLoading}
                 className="ml-3 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {enrichmentLoading ? "Checking company contacts…" : "Enrich saved companies"}
               </button>
               {enrichmentMessage && <p aria-live="polite" className="text-sm text-slate-300">{enrichmentMessage}</p>}
+              <button type="button" onClick={() => handleEnrichContacts(true)}
+                disabled={enrichmentLoading || publicDiscoveryLoading}
+                className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                Retry incomplete scans
+              </button>
             </section>
             <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -2374,6 +2381,12 @@ export default function Dashboard() {
                 {selectedLead.contact_enrichment && (
                   <section className="space-y-2 text-xs text-slate-300">
                     <h4 className="font-semibold text-white">Published company contacts</h4>
+                    {selectedLead.contact_enrichment.website_evidence && (
+                      <p>
+                        {selectedLead.contact_enrichment.website_evidence.finding}{" "}
+                        <a href={selectedLead.contact_enrichment.website_evidence.source_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">Website evidence</a>
+                      </p>
+                    )}
                     <p>{selectedLead.contact_enrichment.status} · {new Date(selectedLead.contact_enrichment.checked_at).toLocaleDateString()}</p>
                     {selectedLead.contact_enrichment.contacts.map((contact, index) => (
                       <p key={index} className="break-words">

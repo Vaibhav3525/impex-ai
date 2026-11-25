@@ -44,3 +44,29 @@ def test_enrichment_preserves_operator_contacts_and_records_progress(monkeypatch
         assert lead.verification_status == "Unverified"
         assert lead.contact_enrichment["contacts"][0]["source_url"] == "https://fixture.test/contact"
         assert enrich_contact_batch(db)["processed"] == 0
+
+
+def test_new_website_and_failed_scan_retry_once_per_cutoff(monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    from app.models.lead import Lead
+
+    init_db()
+    with SessionLocal() as db:
+        lead, _ = ingest_lead(db, LeadCreate(
+            company_name="Retry Website Fixture", country="Germany", product_category="Spices",
+            source="European Spice Association",
+        ))
+        lead.contact_enrichment = {"status": "Company website needed", "checked_at": "2026-01-01T00:00:00Z",
+                                   "scanned_website": None, "website_evidence": {"source_url": "https://directory.test/member"}}
+        lead.website = "https://retry.test"
+        db.commit()
+        cutoff = datetime.now(timezone.utc)
+        def scanned(website):
+            return {"scanned_website": website, "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "Website scan incomplete", "contacts": [], "pages": [], "errors": ["ReadTimeout"]}
+        monkeypatch.setattr("app.services.contact_enrichment.scan_company", scanned)
+        assert enrich_contact_batch(db)["processed"] == 1
+        db.refresh(lead)
+        assert lead.contact_enrichment["website_evidence"]["source_url"] == "https://directory.test/member"
+        assert enrich_contact_batch(db, retry_before=cutoff)["processed"] == 0
+        assert enrich_contact_batch(db, retry_before=datetime.now(timezone.utc) + timedelta(seconds=1))["processed"] == 1

@@ -227,8 +227,8 @@ export const api = {
     }),
 
   // Autonomous Lead Discovery
-  enrichContacts: () => request<{ processed: number; updated: number; with_contacts: number; remaining: number }>(
-    "/discover/enrich-contacts",
+  enrichContacts: (retryBefore?: string) => request<{ processed: number; updated: number; with_contacts: number; remaining: number }>(
+    "/discover/enrich-contacts" + (retryBefore ? `?retry_before=${encodeURIComponent(retryBefore)}` : ""),
     { method: "POST" },
   ),
   runPublicDiscovery: () => request<{ status: string; pairs_checked: number; created: number; duplicates: number; errors: string[] }>(

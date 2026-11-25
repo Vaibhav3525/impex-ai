@@ -9,7 +9,8 @@ Endpoints:
   POST /api/v1/discover/verify-website   — Ethical company website alive check
   POST /api/v1/discover/enrich-domain    — Full DNS/TLS/WHOIS/contact-page enrichment
 """
-from typing import Optional
+from typing import Optional, Literal
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, HttpUrl, Field
 from sqlalchemy.orm import Session
@@ -39,9 +40,40 @@ router = APIRouter(prefix="/discover", tags=["Trade Discovery & Market Intellige
 @router.post("/enrich-contacts")
 def enrich_public_contacts(
     limit: int = Query(4, ge=1, le=4),
+    retry_before: Optional[datetime] = Query(None),
     db: Session = Depends(get_db),
 ):
-    return enrich_contact_batch(db, limit=limit)
+    if retry_before and (retry_before.tzinfo is None or retry_before > datetime.now(timezone.utc)):
+        raise HTTPException(422, "Retry cutoff must be a past timestamp with timezone.")
+    return enrich_contact_batch(db, limit=limit, retry_before=retry_before)
+
+
+class WebsiteResearch(BaseModel):
+    website: HttpUrl
+    source_url: HttpUrl
+    finding: str = Field(min_length=20, max_length=2000)
+    match_status: Literal["Confirmed", "Needs review"] = "Confirmed"
+
+
+@router.put("/website-research/{lead_id}")
+def save_website_research(lead_id: str, req: WebsiteResearch, db: Session = Depends(get_db)):
+    from app.models.lead import Lead
+    from app.core.security import reviewer_identity
+    lead = db.query(Lead).filter_by(lead_id=lead_id).first()
+    if not lead:
+        raise HTTPException(404, "Company was not found.")
+    previous = dict(lead.contact_enrichment or {})
+    previous.setdefault("scanned_website", lead.website)
+    previous["website_evidence"] = {
+        "website": str(req.website), "source_url": str(req.source_url),
+        "finding": req.finding, "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_by": reviewer_identity(),
+        "match_status": req.match_status,
+    }
+    lead.website = str(req.website)
+    lead.contact_enrichment = previous
+    db.commit()
+    return {"lead_id": lead.lead_id, "website": lead.website}
 
 
 @router.post("/public-sources/run")
