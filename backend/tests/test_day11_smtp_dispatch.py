@@ -123,6 +123,21 @@ def test_send_window_metrics_calculation(db_session):
     assert isinstance(metrics["can_send"], bool)
 
 
+def test_confirm_external_send_schedules_followup_without_smtp(db_session, monkeypatch):
+    lead = _make_dispatch_lead(db_session)
+    product = _make_dispatch_product(db_session)
+    draft = compose_outreach_email(lead_id=lead.lead_id,
+        req=EmailComposeRequest(product_profile_id=product.profile_id), db=db_session)
+    monkeypatch.setattr(settings, "OUTREACH_ENABLED", False)
+    assert not send_outreach_email(db_session, draft.email_id, confirmed_external_send=True)["success"]
+    approve_outreach_email(email_id=draft.email_id,
+        req=EmailApprovalRequest(reviewer_name="Fixture"), db=db_session)
+    assert send_outreach_email(db_session, draft.email_id, confirmed_external_send=True)["success"]
+    assert draft.status == "Sent" and lead.next_followup is not None
+    assert any("External send confirmed" in entry for entry in draft.grounding_evidence)
+    assert not send_outreach_email(db_session, draft.email_id, confirmed_external_send=True)["success"]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Mode A Gate & Safety Checks
 # ─────────────────────────────────────────────────────────────────────────────

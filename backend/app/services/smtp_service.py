@@ -62,8 +62,8 @@ def is_suppressed(db, address):
     return db.query(SuppressionList).filter(SuppressionList.email.in_([address, domain, "@" + domain])).first()
 
 
-def send_outreach_email(db: Session, email_id: str, bypass_rate_limits: bool = False) -> Dict[str, Any]:
-    """Only a confirmed SMTP acceptance can create a Sent record. Never simulates delivery."""
+def send_outreach_email(db: Session, email_id: str, bypass_rate_limits: bool = False, *, confirmed_external_send: bool = False) -> Dict[str, Any]:
+    """Dispatch via SMTP or record an operator-confirmed assisted send."""
     from sqlalchemy import update
     from app.models.dispatch_lock import DispatchLock
     import ssl
@@ -76,9 +76,11 @@ def send_outreach_email(db: Session, email_id: str, bypass_rate_limits: bool = F
         return fail("Mode A Violation: authenticated operator approval is required.")
     if bypass_rate_limits:
         return fail("Rate limit bypass is disabled.")
-    if not settings.OUTREACH_ENABLED:
+    if confirmed_external_send and (email_obj.approval_mode != "Assisted" or email_obj.campaign_id):
+        return fail("Only individually approved drafts can be recorded as sent externally.")
+    if not confirmed_external_send and not settings.OUTREACH_ENABLED:
         return fail("Email sending is disabled. Configure and enable outreach first.")
-    if not settings.SMTP_USER or not settings.SMTP_PASSWORD or not settings.SMTP_FROM_EMAIL:
+    if not confirmed_external_send and not (settings.SMTP_USER and settings.SMTP_PASSWORD and settings.SMTP_FROM_EMAIL):
         return fail("SMTP credentials and an explicit sender address are required. No email was sent.")
     now = datetime.now(timezone.utc)
     if email_obj.scheduled_for:
@@ -111,6 +113,15 @@ def send_outreach_email(db: Session, email_id: str, bypass_rate_limits: bool = F
     if not get_send_window_metrics(db)["can_send"]:
         db.rollback()
         return fail("Dispatch rate limit reached.")
+    if confirmed_external_send:
+        from app.core.security import reviewer_identity
+        audit = f"External send confirmed by {reviewer_identity()} at {now.isoformat()}"
+        email_obj.grounding_evidence = [*(email_obj.grounding_evidence or []), audit]
+        email_obj.status, email_obj.sent_at, email_obj.error_message = "Sent", now, None
+        lead.outreach_status, lead.pipeline_stage = "Sent", "Email Sent"
+        lead.next_followup = now + timedelta(days=4) if email_obj.sequence_step < 3 else None
+        db.commit()
+        return {"success": True, "email_id": email_id, "status": "Sent", "message": audit}
     email_obj.status = "Sending"
     email_obj.sent_at = now  # Reserve quota before network IO.
     db.commit()  # A worker crash leaves an unclaimable Sending record for investigation.

@@ -317,6 +317,14 @@ def dispatch_single_email(
     return res
 
 
+@router.post("/emails/{email_id}/confirm-external-send")
+def confirm_external_send(email_id: str, db: Session = Depends(get_db)):
+    result = send_outreach_email(db, email_id, confirmed_external_send=True)
+    if not result.get("success"):
+        raise HTTPException(400, result["error"])
+    return result
+
+
 @router.post("/dispatch-batch")
 def dispatch_approved_batch(
     max_emails: Optional[int] = Query(None, ge=1, le=50, description="Max emails to dispatch in this batch"),

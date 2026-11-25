@@ -337,6 +337,8 @@ export const api = {
     request<any>(`/outreach/emails/${emailId}/send`, {
       method: "POST",
     }),
+  confirmExternalSend: (emailId: string) =>
+    request<{ success: boolean }>(`/outreach/emails/${emailId}/confirm-external-send`, { method: "POST" }),
   dispatchBatch: (limit: number = 10) =>
     request<any>(`/outreach/dispatch-batch?max_emails=${limit}`, {
       method: "POST",

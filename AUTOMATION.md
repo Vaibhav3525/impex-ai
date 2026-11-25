@@ -24,6 +24,8 @@ Without a configured feed, job history reports **Not configured** and does not f
 
 ## Production
 
+On the free Render service, connect your business mailbox to your device's default mail app. In the outreach queue, approve the draft and use **Open in Mail App**. After sending from the business mailbox, use **Record as Sent**. This records the operator confirmation and makes the next follow-up due after four days. Use **Run Cadence Scheduler** to queue due drafts for review. Record replies and opt-outs in the app before processing follow-ups.
+
 The Render blueprint now includes a separate paid background worker. Give web and worker the **same managed PostgreSQL DATABASE_URL**, exporter identity and sender settings. Generate a stable signing key and operator credentials. The worker has no public HTTP port. Do not use independent SQLite files for multiple processes on different hosts. Review the paid service configuration before deploying; nothing has been deployed or purchased by this local change.
 
 Production connections still required: a genuine buyer source, a supported email transport, inbound mailbox/provider event integration, and real exporter details. Existing reply ingestion remains an authenticated operator API, not an unsigned public mailbox webhook. Until inbound events are connected, use manual reply ingestion; do not enable unattended outreach that depends on automatic reply detection.

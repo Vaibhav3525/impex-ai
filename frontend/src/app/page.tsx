@@ -360,6 +360,20 @@ export default function Dashboard() {
     }
   };
 
+  const handleConfirmExternalSend = async (emailId: string) => {
+    if (!window.confirm("Have you already sent this exact draft from your business mailbox?")) return;
+    try {
+      await api.confirmExternalSend(emailId);
+      setActionSuccessMsg("Sent recorded. The next follow-up will appear when due.");
+      await loadQueue(queueStatusFilter);
+      await loadAnalytics();
+      await loadCadenceStatus();
+      setTimeout(() => setActionSuccessMsg(null), 4000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not record the send.");
+    }
+  };
+
   const handleRejectEmail = async (emailId: string) => {
     const reason = prompt("Enter rejection / quarantine reason:", "Non-matching specs or high risk") || "Manual compliance rejection";
     try {
@@ -1951,6 +1965,15 @@ export default function Dashboard() {
                           </>
                         )}
                         {email.status === "Approved" && (
+                          <>
+                          <a
+                            href={`mailto:${encodeURIComponent(email.to_email)}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body_text.replace(/\r?\n/g, "\r\n"))}`}
+                            className="px-4 py-2 rounded-lg bg-emerald-600 text-xs font-bold text-white"
+                          >Open in Mail App</a>
+                          <button
+                            onClick={() => handleConfirmExternalSend(email.email_id)}
+                            className="px-4 py-2 rounded-lg bg-slate-800 text-xs font-semibold text-white"
+                          >Record as Sent</button>
                           <button
                             onClick={() => handleDispatchEmail(email.email_id)}
                             className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white shadow-lg shadow-blue-600/20 flex items-center gap-2 transition-all"
@@ -1958,6 +1981,7 @@ export default function Dashboard() {
                             <Send className="h-3.5 w-3.5" />
                             Dispatch via SMTP
                           </button>
+                          </>
                         )}
                       </div>
                     </div>
