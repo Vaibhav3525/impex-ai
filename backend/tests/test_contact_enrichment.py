@@ -26,6 +26,18 @@ def test_company_scan_blocks_private_hosts_and_offsite_redirects(monkeypatch):
     assert scan_company(None)["status"] == "Company website needed"
 
 
+def test_fetch_handles_company_pages_above_one_megabyte(monkeypatch):
+    import httpx
+    import time
+    from app.services.contact_enrichment import _get
+    monkeypatch.setattr("app.services.contact_enrichment._validate_url", lambda *a: None)
+    content = b"<html><body>" + b" " * 1_100_000 + b"info@buyer.test</body></html>"
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, headers={"content-type": "text/html"}, content=content))
+    with httpx.Client(transport=transport) as client:
+        _, _, body = _get(client, "https://buyer.test", "buyer.test", time.monotonic() + 30)
+    assert extract_contacts(body, "https://buyer.test")[0][0]["value"] == "info@buyer.test"
+
+
 def test_enrichment_preserves_operator_contacts_and_records_progress(monkeypatch):
     init_db()
     with SessionLocal() as db:

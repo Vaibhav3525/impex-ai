@@ -50,7 +50,7 @@ def _get(client, url, company_host, deadline):
             response.raise_for_status()
             body = bytearray()
             for chunk in response.iter_bytes(chunk_size=16_384):
-                if time.monotonic() > deadline or len(body) + len(chunk) > 1_000_000:
+                if time.monotonic() > deadline or len(body) + len(chunk) > 2_500_000:
                     raise ValueError("Company page exceeded scan limits")
                 body.extend(chunk)
             return url, response.headers.get("content-type", ""), bytes(body)
