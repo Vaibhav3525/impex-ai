@@ -10,7 +10,7 @@ Endpoints:
   POST /api/v1/discover/enrich-domain    — Full DNS/TLS/WHOIS/contact-page enrichment
 """
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, HttpUrl, Field
 from sqlalchemy.orm import Session
 
@@ -30,8 +30,23 @@ from app.services.domain_enrichment import enrich_domain
 from app.services.lead_discovery_crawler import LeadDiscoveryCrawler
 from app.services.embassy_directory_connector import EmbassyDirectoryConnector
 from app.services.linkedin_dork_service import LinkedInDorkService
+from app.services.public_source_discovery import run_public_discovery
 
 router = APIRouter(prefix="/discover", tags=["Trade Discovery & Market Intelligence"])
+
+
+@router.post("/public-sources/run")
+def run_public_source_discovery(
+    max_pairs: int = Query(6, ge=1, le=24),
+    max_leads_per_pair: int = Query(10, ge=1, le=25),
+    db: Session = Depends(get_db),
+):
+    """Run conservative, API-free discovery against curated public sources.
+
+    New records always enter the review queue as unverified; this endpoint never
+    authorizes outreach or sends email.
+    """
+    return run_public_discovery(db, max_pairs=max_pairs, max_leads_per_pair=max_leads_per_pair)
 
 
 # ─────────────────────────────────────────────

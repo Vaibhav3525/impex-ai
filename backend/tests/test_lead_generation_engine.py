@@ -11,6 +11,7 @@ from app.models.lead import Lead
 from app.services.lead_discovery_crawler import LeadDiscoveryCrawler
 from app.services.embassy_directory_connector import EmbassyDirectoryConnector
 from app.services.linkedin_dork_service import LinkedInDorkService
+from app.services.public_source_discovery import DIRECTORIES, extract_candidates, run_public_discovery
 from app.api.discovery import (
     run_autonomous_lead_discovery,
     search_embassy_directories,
@@ -98,6 +99,66 @@ def test_crawler_html_metadata_and_evidence_extraction():
     assert extracted["business_email"] in ["purchasing@hamburggrains.de", "import@hamburggrains.de"]
     assert extracted["import_evidence"] is not None
     assert "direct importer" in extracted["import_evidence"].lower()
+
+
+RICE_LISTINGS = b"""
+    <div class="wixui-repeater__item">
+      <h1>Example Foods Ltd</h1><a href="https://buyer.example.com">Visit site</a>
+    </div>
+    <a href="https://irrelevant.example.org">General information</a>
+"""
+
+
+def test_public_source_extraction_uses_company_listing_and_matching_country():
+    source = DIRECTORIES[0]
+    results = extract_candidates(RICE_LISTINGS, source, "Basmati Rice", "United Kingdom")
+    assert len(results) == 1
+    assert results[0].company_name == "Example Foods Ltd"
+    assert results[0].source_url == source.url
+    assert not results[0].import_evidence
+    assert not extract_candidates(RICE_LISTINGS, source, "Basmati Rice", "Germany")
+
+
+def test_public_discovery_ingests_as_unverified(db_session, monkeypatch):
+    from app.models.product_profile import ProductProfile
+
+    product = ProductProfile(
+        product_name="Fixture Basmati Rice",
+        product_category="Grains",
+        target_countries=["United Kingdom", "Germany"],
+        excluded_countries=[],
+        certifications=[],
+        export_readiness=False,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    monkeypatch.setattr("app.services.public_source_discovery.DIRECTORIES", (DIRECTORIES[0],))
+    monkeypatch.setattr("app.services.public_source_discovery._fetch_directory", lambda *_: RICE_LISTINGS)
+    result = run_public_discovery(db_session, max_pairs=1)
+    lead = db_session.query(Lead).filter_by(company_name="Example Foods Ltd").one()
+    assert result["created"] == 1
+    assert lead.verification_status == "Unverified"
+    assert lead.outreach_status == "Not Contacted"
+    assert run_public_discovery(db_session, max_pairs=1)["duplicates"] == 1
+
+
+def test_discovery_trigger_token_is_scoped(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.core.config import settings
+    from app.main import app
+
+    token = "discovery-fixture-token-longer-than-32-characters"
+    monkeypatch.setattr(settings, "DISCOVERY_TRIGGER_TOKEN", token)
+    monkeypatch.setattr("app.api.discovery.run_public_discovery", lambda *a, **k: {"status": "Completed"})
+
+    with TestClient(app) as client:
+        route = "/api/v1/discover/public-sources/run"
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.post(route).status_code == 401
+        assert client.post(route, headers=headers).json() == {"status": "Completed"}
+        assert client.get("/api/v1/products", headers=headers).status_code == 401
 
 
 def test_embassy_directory_connector_retrieves_missions():

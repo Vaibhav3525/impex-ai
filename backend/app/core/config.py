@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     ENABLE_AUTO_FOLLOWUPS: bool = False
     AUTOMATION_INTERVAL_SECONDS: int = Field(600, ge=60, le=86400)
     BUYER_FEED_URL: str = ""
+    DISCOVERY_TRIGGER_TOKEN: str = ""
 
     # External Trade APIs
     UN_COMTRADE_API_KEY: str = ""

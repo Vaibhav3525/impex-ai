@@ -374,6 +374,27 @@ export default function Dashboard() {
   const [discoveryResults, setDiscoveryResults] = useState<any[]>([]);
   const [discoverySummary, setDiscoverySummary] = useState<any>(null);
   const [linkedinData, setLinkedinData] = useState<any>(null);
+  const [publicDiscoveryLoading, setPublicDiscoveryLoading] = useState(false);
+  const [publicDiscoveryMessage, setPublicDiscoveryMessage] = useState("");
+
+  const handlePublicDiscovery = async () => {
+    setPublicDiscoveryLoading(true);
+    setPublicDiscoveryMessage("");
+    try {
+      const result = await api.runPublicDiscovery();
+      const count = result.pairs_checked;
+      setPublicDiscoveryMessage([
+        result.status,
+        `${result.created} new leads across ${count} product-market pairs. ${result.duplicates} duplicates skipped.`,
+        ...result.errors,
+      ].join(" "));
+      if (result.created) await fetchLeads(1);
+    } catch {
+      setPublicDiscoveryMessage("Public directory discovery failed. Try again in a moment.");
+    } finally {
+      setPublicDiscoveryLoading(false);
+    }
+  };
 
   const handleRunDiscovery = async () => {
     setDiscoveryLoading(true);
@@ -779,6 +800,19 @@ export default function Dashboard() {
         {/* Tab: Autonomous Lead Discovery Hub */}
         {activeTab === "discovery" && (
           <div className="p-8 pt-2 space-y-6 pb-20">
+            <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/90 p-6">
+              <h3 className="font-bold text-white">Public trade directories</h3>
+              <p className="text-sm text-slate-400">Find prospective buyers for your catalog and target markets. New leads are saved as unverified with a source link.</p>
+              <button
+                type="button"
+                onClick={handlePublicDiscovery}
+                disabled={publicDiscoveryLoading}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {publicDiscoveryLoading ? "Checking directories…" : "Check public directories"}
+              </button>
+              {publicDiscoveryMessage && <p aria-live="polite" className="text-sm text-slate-300">{publicDiscoveryMessage}</p>}
+            </section>
             <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                 <div>
