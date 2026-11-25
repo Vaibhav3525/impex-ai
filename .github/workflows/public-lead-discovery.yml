@@ -4,8 +4,6 @@ permissions: {}
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "23 3 * * *"
 
 concurrency:
   group: public-lead-discovery
