@@ -31,6 +31,12 @@ async def require_operator(request: Request) -> str:
     if not settings.ADMIN_PASSWORD:
         raise HTTPException(503, "Operator credentials are not configured.")
     authorization = request.headers.get("authorization", "")
+    if request.method == "POST" and request.url.path == "/api/v1/discover/public-sources/run":
+        trigger_token = settings.DISCOVERY_TRIGGER_TOKEN
+        if len(trigger_token) >= 32 and hmac.compare_digest(
+            authorization.encode(), f"Bearer {trigger_token}".encode()
+        ):
+            return "discovery-scheduler"
     if authorization.startswith("Bearer ") and secrets.compare_digest(authorization[7:], settings.ADMIN_PASSWORD):
         _actor.set(settings.ADMIN_USERNAME)
         return settings.ADMIN_USERNAME

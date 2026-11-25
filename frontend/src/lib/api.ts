@@ -227,6 +227,10 @@ export const api = {
     }),
 
   // Autonomous Lead Discovery
+  runPublicDiscovery: () => request<{ status: string; pairs_checked: number; created: number; duplicates: number; errors: string[] }>(
+    "/discover/public-sources/run",
+    { method: "POST" },
+  ),
   runAutonomousSearch: (payload: { commodity: string; country?: string; sources?: string[]; limit?: number; auto_ingest?: boolean; auto_verify?: boolean }) =>
     request<any>("/discover/autonomous-search", {
       method: "POST",
