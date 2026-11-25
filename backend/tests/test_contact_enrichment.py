@@ -38,6 +38,19 @@ def test_fetch_handles_company_pages_above_one_megabyte(monkeypatch):
     assert extract_contacts(body, "https://buyer.test")[0][0]["value"] == "info@buyer.test"
 
 
+@pytest.mark.parametrize("robots_status,expected", [(403, "Published contacts found"), (429, "Website scan incomplete"), (503, "Website scan incomplete")])
+def test_unavailable_robots_handling(monkeypatch, robots_status, expected):
+    import httpx
+    import app.services.contact_enrichment as service
+    def get(client, url, company_host, deadline):
+        if url.endswith("/robots.txt"):
+            response = httpx.Response(robots_status, request=httpx.Request("GET", url))
+            response.raise_for_status()
+        return url, "text/html", b'<a href="mailto:info@buyer.test">Contact</a>'
+    monkeypatch.setattr(service, "_get", get)
+    assert service.scan_company("https://buyer.test")["status"] == expected
+
+
 def test_enrichment_preserves_operator_contacts_and_records_progress(monkeypatch):
     init_db()
     with SessionLocal() as db:

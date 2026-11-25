@@ -118,7 +118,9 @@ def scan_company(website):
             try:
                 _, _, robots_body = _get(client, robots_url, company_host, deadline)
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in {404, 410}:
+                # RFC 9309 section 2.3.1.3 treats robots 4xx as unavailable.
+                # A rate limit still ends this attempt.
+                if not 400 <= exc.response.status_code < 500 or exc.response.status_code == 429:
                     raise
                 robots_body = b""
             rules = RobotFileParser()
