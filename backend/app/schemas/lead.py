@@ -40,6 +40,7 @@ class LeadUpdate(BaseModel):
     notes: Optional[str] = None
 
 class LeadResponse(LeadBase):
+    contact_enrichment: Optional[Dict[str, Any]] = None
     id: int
     lead_id: str
     verification_status: str

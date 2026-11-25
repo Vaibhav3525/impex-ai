@@ -26,7 +26,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     # Additive migration shared by SQLite and PostgreSQL; migration errors are fatal.
     additions = {
-        "leads": {"payment_risk_score": "FLOAT DEFAULT 0.0", "risk_level": "VARCHAR(20) DEFAULT 'LOW'"},
+        "leads": {"payment_risk_score": "FLOAT DEFAULT 0.0", "risk_level": "VARCHAR(20) DEFAULT 'LOW'", "contact_enrichment": "JSON"},
         "outreach_emails": {"scheduled_for": "TIMESTAMP"},
         "product_profiles": {"price_unit": "VARCHAR(20)"},
         "deals": {"payment_evidence_reference": "TEXT", "payment_verified_by": "VARCHAR(100)", "payment_verified_at": "TIMESTAMP"},

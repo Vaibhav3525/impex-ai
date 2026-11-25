@@ -23,6 +23,7 @@ class Lead(Base):
     job_title = Column(String(255), nullable=True)
     business_email = Column(String(255), nullable=True, index=True)
     phone_number = Column(String(100), nullable=True)
+    contact_enrichment = Column(JSON, nullable=True)
     
     # Provenance & Evidence
     source = Column(String(255), nullable=False)

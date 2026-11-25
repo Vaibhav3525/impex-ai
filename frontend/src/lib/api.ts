@@ -227,6 +227,10 @@ export const api = {
     }),
 
   // Autonomous Lead Discovery
+  enrichContacts: () => request<{ processed: number; updated: number; with_contacts: number; remaining: number }>(
+    "/discover/enrich-contacts",
+    { method: "POST" },
+  ),
   runPublicDiscovery: () => request<{ status: string; pairs_checked: number; created: number; duplicates: number; errors: string[] }>(
     "/discover/public-sources/run",
     { method: "POST" },

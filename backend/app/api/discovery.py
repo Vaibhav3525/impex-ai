@@ -31,8 +31,17 @@ from app.services.lead_discovery_crawler import LeadDiscoveryCrawler
 from app.services.embassy_directory_connector import EmbassyDirectoryConnector
 from app.services.linkedin_dork_service import LinkedInDorkService
 from app.services.public_source_discovery import run_public_discovery
+from app.services.contact_enrichment import enrich_contact_batch
 
 router = APIRouter(prefix="/discover", tags=["Trade Discovery & Market Intelligence"])
+
+
+@router.post("/enrich-contacts")
+def enrich_public_contacts(
+    limit: int = Query(4, ge=1, le=4),
+    db: Session = Depends(get_db),
+):
+    return enrich_contact_batch(db, limit=limit)
 
 
 @router.post("/public-sources/run")

@@ -49,6 +49,11 @@ interface Lead {
   job_title: string | null;
   business_email: string | null;
   phone_number: string | null;
+  contact_enrichment?: {
+    status: string;
+    checked_at: string;
+    contacts: { type: string; value: string; source_url: string }[];
+  } | null;
   source: string;
   source_url: string | null;
   import_evidence: string | null;
@@ -376,6 +381,30 @@ export default function Dashboard() {
   const [linkedinData, setLinkedinData] = useState<any>(null);
   const [publicDiscoveryLoading, setPublicDiscoveryLoading] = useState(false);
   const [publicDiscoveryMessage, setPublicDiscoveryMessage] = useState("");
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false);
+  const [enrichmentMessage, setEnrichmentMessage] = useState("");
+
+  const handleEnrichContacts = async () => {
+    setEnrichmentLoading(true);
+    let processed = 0;
+    let updated = 0;
+    try {
+      let remaining = 1;
+      while (remaining > 0) {
+        const result = await api.enrichContacts();
+        processed += result.processed;
+        updated += result.updated;
+        remaining = result.remaining;
+        setEnrichmentMessage(`${processed} companies checked. ${updated} contact records updated. ${remaining} remaining.`);
+        if (result.processed === 0) break;
+      }
+      await fetchLeads(1);
+    } catch {
+      setEnrichmentMessage(`${processed} companies checked. The request stopped. Click again to continue with the remaining companies.`);
+    } finally {
+      setEnrichmentLoading(false);
+    }
+  };
 
   const handlePublicDiscovery = async () => {
     setPublicDiscoveryLoading(true);
@@ -812,6 +841,15 @@ export default function Dashboard() {
                 {publicDiscoveryLoading ? "Checking directories…" : "Check public directories"}
               </button>
               {publicDiscoveryMessage && <p aria-live="polite" className="text-sm text-slate-300">{publicDiscoveryMessage}</p>}
+              <button
+                type="button"
+                onClick={handleEnrichContacts}
+                disabled={enrichmentLoading || publicDiscoveryLoading}
+                className="ml-3 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {enrichmentLoading ? "Checking company contacts…" : "Enrich saved companies"}
+              </button>
+              {enrichmentMessage && <p aria-live="polite" className="text-sm text-slate-300">{enrichmentMessage}</p>}
             </section>
             <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -2332,6 +2370,18 @@ export default function Dashboard() {
                   <p className="text-xs text-slate-400">
                     <strong>Import Evidence:</strong> {selectedLead.import_evidence}
                   </p>
+                )}
+                {selectedLead.contact_enrichment && (
+                  <section className="space-y-2 text-xs text-slate-300">
+                    <h4 className="font-semibold text-white">Published company contacts</h4>
+                    <p>{selectedLead.contact_enrichment.status} · {new Date(selectedLead.contact_enrichment.checked_at).toLocaleDateString()}</p>
+                    {selectedLead.contact_enrichment.contacts.map((contact, index) => (
+                      <p key={index} className="break-words">
+                        {contact.value}{" "}
+                        <a href={contact.source_url} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">View source</a>
+                      </p>
+                    ))}
+                  </section>
                 )}
               </div>
 
