@@ -282,64 +282,27 @@ def manual_lead_verification_override(
     if not lead:
         raise HTTPException(status_code=404, detail=f"Lead with ID {lead_id} not found")
 
-    # Update flags
-    current_flags = list(lead.risk_flags or [])
-    if req.cleared_flags:
-        current_flags = [f for f in current_flags if f not in req.cleared_flags]
-    if req.added_flags:
-        for f in req.added_flags:
-            if f not in current_flags:
-                current_flags.append(f)
-    lead.risk_flags = current_flags
-
-    # Apply score adjustments
-    if req.score_adjustment is not None:
-        new_score = (lead.buyer_score or 0.0) + req.score_adjustment
-        lead.buyer_score = round(max(0.0, min(100.0, new_score)), 1)
-
-    # Apply status override
-    if req.status_override:
-        valid_statuses = {"Verified", "Partially Verified", "Unverified", "Rejected"}
-        if req.status_override not in valid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status '{req.status_override}'. Must be one of {valid_statuses}."
-            )
+    from app.models.evidence import ReviewedEvidence
+    from app.services.evidence_service import usable_source
+    from app.core.security import reviewer_identity
+    if req.score_adjustment is not None or req.cleared_flags or req.added_flags:
+        raise HTTPException(422, "Scores and flags cannot be overridden. Record reviewed evidence and rerun checks.")
+    if any(not usable_source(e.source_url) for e in req.evidence):
+        raise HTTPException(422, "Evidence requires a real public source URL.")
+    if req.status_override not in {None, "Rejected", "Unverified", "Verified", "Partially Verified"}:
+        raise HTTPException(422, "Invalid verification status.")
+    for item in req.evidence:
+        db.add(ReviewedEvidence(lead_id=lead_id, reviewed_by=reviewer_identity(), **item.model_dump()))
+    db.flush()
+    log = run_lead_verification(db, lead, run_live_checks=req.run_live_checks)
+    if req.status_override in {"Rejected", "Unverified"}:
         lead.verification_status = req.status_override
-        if req.status_override == "Verified" and lead.pipeline_stage in {"Discovered", "Unverified"}:
-            lead.pipeline_stage = "Verified Candidate"
-
-    lead.last_verified = datetime.now(timezone.utc)
-
-    # Append audit trail note
-    audit_note = (
-        f"[Manual Review by {req.reviewer_name} at {lead.last_verified.strftime('%Y-%m-%d %H:%M:%S UTC')}]: "
-        f"{req.notes} | Status: {lead.verification_status} | Score: {lead.buyer_score}"
-    )
-    if lead.notes:
-        lead.notes = f"{lead.notes}\n{audit_note}"
-    else:
-        lead.notes = audit_note
-
-    # Create immutable VerificationLog entry for the manual override
-    manual_log = VerificationLog(
-        lead_id=lead.lead_id,
-        identity_score=lead.buyer_score * 0.20,
-        relevance_score=lead.buyer_score * 0.20,
-        website_score=lead.buyer_score * 0.15,
-        email_score=lead.buyer_score * 0.15,
-        import_evidence_score=lead.buyer_score * 0.15,
-        independent_score=lead.buyer_score * 0.15,
-        total_score=lead.buyer_score,
-        risk_level="LOW" if lead.verification_status == "Verified" else "MEDIUM",
-        detected_flags=lead.risk_flags,
-        verified_by=f"human_reviewer:{req.reviewer_name}",
-        evidence_summary=f"Human review override by {req.reviewer_name}: {req.notes}",
-    )
-    db.add(manual_log)
+    elif req.status_override and lead.verification_status != req.status_override:
+        # Evidence is retained for review, but cannot elevate the resulting status.
+        raise HTTPException(422, "Requested status is not supported by the reviewed evidence and technical checks.")
+    lead.notes = (lead.notes or "") + f"\n[Evidence review by {reviewer_identity()}]: {req.notes}"
     db.commit()
     db.refresh(lead)
-
     return lead
 
 

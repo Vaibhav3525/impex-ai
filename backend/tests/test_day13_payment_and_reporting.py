@@ -49,7 +49,7 @@ def test_assess_deal_high_risk_open_account(db_session):
     assert assessment["status"] == "Blocked"
     assert assessment["risk_rating"] == "HIGH"
     assert assessment["human_approval_required"] is True
-    assert any("Unsecured payment structure" in f for f in assessment["risk_factors"])
+    assert any("Unsecured buyer credit" in f for f in assessment["risk_factors"])
 
 
 def test_assess_deal_critical_fraud_pattern_blocked(db_session):
@@ -77,7 +77,7 @@ def test_assess_deal_critical_fraud_pattern_blocked(db_session):
     assert assessment["status"] == "Blocked"
     assert assessment["risk_rating"] == "CRITICAL"
     assert assessment["human_approval_required"] is True
-    assert "DO NOT SHIP" in assessment["recommended_action"]
+    assert "Do not confirm or ship" in assessment["recommended_action"]
 
 
 def test_assess_deal_secure_advance_terms_approved(db_session):
@@ -129,7 +129,7 @@ def test_assess_deal_large_capital_exposure_triggers_management_review(db_sessio
     )
 
     assessment = assess_deal_financial_risk(deal, lead)
-    assert any("Large capital exposure" in f for f in assessment["risk_factors"])
+    assert any("Large exposure" in f for f in assessment["risk_factors"])
     assert assessment["human_approval_required"] is True
 
 
@@ -276,7 +276,7 @@ def test_executive_report_aggregates_ten_prd_metrics(db_session):
     assert m["4_qualified_potential_buyers"] > 0
     assert m["5_valid_business_email_addresses"] > 0
     assert m["6_emails_approved_for_outreach"] > 0
-    assert m["7_emails_successfully_delivered"] > 0
+    assert m["7_emails_successfully_delivered"] <= m["6_emails_approved_for_outreach"]
     assert m["8_replies_received"] > 0
     assert m["9_qualified_buyer_inquiries"] > 0
     assert m["10_quotations_and_orders"] > 0

@@ -1,7 +1,6 @@
 # ==============================================================================
-# ImpEx AI — Single Unified All-in-One Production Dockerfile
-# Serves Next.js Frontend + FastAPI Backend + Real Buyers DB on a Single Port
-# Compatible with 100% Free Tiers: Render, Koyeb, Railway, Fly.io, Hugging Face
+# ImpEx AI production image: static frontend and FastAPI server.
+# A separate worker and managed PostgreSQL service are required for automation.
 # ==============================================================================
 
 # Stage 1: Build Next.js Static Frontend
@@ -42,11 +41,8 @@ ENV PORT=8000
 ENV HOST=0.0.0.0
 ENV APP_ENV=production
 ENV DEBUG=False
-ENV DATABASE_URL=sqlite:///./impex_leads.db
-ENV ALLOWED_ORIGINS=*
-
-# Seed authentic verified buyer data on build
-RUN python scripts/seed_verified_real_buyers.py
+# Production supplies persistent DATABASE_URL, exact ALLOWED_ORIGINS and credentials.
+# Seeding is an explicit administrative operation, never a container build step.
 
 EXPOSE 8000
 

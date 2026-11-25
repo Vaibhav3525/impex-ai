@@ -38,7 +38,12 @@ class DealBase(BaseModel):
 class DealCreate(DealBase):
     pass
 
+class PaymentEvidenceRequest(BaseModel):
+    reference: str = Field(min_length=10, max_length=2000)
+    notes: str = Field(min_length=20, max_length=4000)
+
 class DealUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     stage: Optional[str] = None
     product_name: Optional[str] = None
     hs_code: Optional[str] = None
@@ -48,14 +53,15 @@ class DealUpdate(BaseModel):
     destination_port: Optional[str] = None
     incoterms: Optional[str] = None
     payment_terms: Optional[str] = None
-    payment_risk_status: Optional[str] = None
-    payment_risk_notes: Optional[str] = None
     quotation_amount: Optional[float] = None
     confirmed_order_value: Optional[float] = None
     assigned_to: Optional[str] = None
     notes: Optional[str] = None
 
 class DealResponse(DealBase):
+    payment_evidence_reference: Optional[str] = None
+    payment_verified_by: Optional[str] = None
+    payment_verified_at: Optional[datetime] = None
     id: int
     deal_id: str
     payment_risk_status: str

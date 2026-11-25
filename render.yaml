@@ -1,7 +1,6 @@
 # ==============================================================================
-# ImpEx AI — Render Blueprint (Unified 1-Click All-in-One Deployment)
-# Deploys Next.js Frontend + FastAPI Backend + Real Buyers DB as ONE Free Service
-# Gives you 1 single live temporary domain: https://impex-ai.onrender.com
+# ImpEx AI — Render web and background worker
+# Requires a managed PostgreSQL database and a paid worker.
 # ==============================================================================
 version: "1"
 
@@ -9,16 +8,34 @@ services:
   - type: web
     name: impex-ai
     env: docker
-    plan: free
+    plan: starter
     region: frankfurt
     dockerfilePath: ./Dockerfile
-    envVars:
+    envVars: &impex_environment
       - key: APP_ENV
         value: production
       - key: DEBUG
         value: "False"
       - key: ALLOWED_ORIGINS
-        value: "*"
+        sync: false # Exact public origin, e.g. https://impex-ai.onrender.com
+      - key: DATABASE_URL
+        sync: false # Required managed PostgreSQL connection string
+      - key: DATABASE_PERSISTENT
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: OUTREACH_ENABLED
+        value: "False"
+      - key: EXPORTER_NAME
+        sync: false
+      - key: BUYER_FEED_URL
+        sync: false # Optional approved public HTTPS JSON feed
+      - key: AUTOMATION_INTERVAL_SECONDS
+        value: "600"
       - key: GEMINI_API_KEY
         sync: false # Enter your key in Render dashboard (optional)
       - key: SMTP_HOST
@@ -31,3 +48,14 @@ services:
         sync: false # Hostinger business email (optional)
       - key: SMTP_PASSWORD
         sync: false # Hostinger email password (optional)
+      - key: SMTP_FROM_EMAIL
+        sync: false # Verified sender address; required before sending
+
+  - type: worker
+    name: impex-automation-worker
+    env: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh -c 'cd /app/backend && python -m app.worker'
+    envVars: *impex_environment

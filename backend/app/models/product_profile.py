@@ -36,6 +36,7 @@ class ProductProfile(Base):
     target_price_min = Column(Float, nullable=True)
     target_price_max = Column(Float, nullable=True)
     currency = Column(String(10), default="USD", nullable=False)
+    price_unit = Column(String(20), nullable=True)
     incoterms = Column(String(50), default="FOB", nullable=False) # FOB, CIF, CFR, EXW
 
     # Financial & Risk Parameters
@@ -47,7 +48,7 @@ class ProductProfile(Base):
 
     # Export Readiness & Compliance
     certifications = Column(JSON, default=list)      # e.g. ["APEDA", "FSSAI", "ISO 22000", "HACCP", "HALAL"]
-    export_readiness = Column(Boolean, default=True, nullable=False)
+    export_readiness = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, index=True, nullable=False)
 
     # Timestamps

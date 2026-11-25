@@ -29,14 +29,14 @@ def get_send_window_metrics(db: Session) -> Dict[str, Any]:
 
     sent_today = (
         db.query(OutreachEmail)
-        .filter(OutreachEmail.status == "Sent")
+        .filter(OutreachEmail.status.in_(["Sent", "Delivered", "Replied", "Sending", "Delivery Unknown"]))
         .filter(OutreachEmail.sent_at >= today_start)
         .count()
     )
 
     sent_this_hour = (
         db.query(OutreachEmail)
-        .filter(OutreachEmail.status == "Sent")
+        .filter(OutreachEmail.status.in_(["Sent", "Delivered", "Replied", "Sending", "Delivery Unknown"]))
         .filter(OutreachEmail.sent_at >= one_hour_ago)
         .count()
     )
@@ -56,142 +56,102 @@ def get_send_window_metrics(db: Session) -> Dict[str, Any]:
     }
 
 
-def send_outreach_email(
-    db: Session,
-    email_id: str,
-    bypass_rate_limits: bool = False,
-) -> Dict[str, Any]:
-    """
-    Dispatches a single approved outreach email.
-    
-    Invariants Enforced:
-      1. Mode A Gate: Cannot send emails in 'Queued', 'Rejected', or 'Suppressed' state.
-      2. Suppression Check: Never dispatches to an address on the suppression list.
-      3. Rate Limiting: Respects hourly & daily volume caps to protect domain reputation.
-      4. CRM Synchrony: Advances Lead to 'Email Sent' and schedules next follow-up (+4 days).
-    """
+def is_suppressed(db, address):
+    address = (address or "").lower().strip()
+    domain = address.rsplit("@", 1)[-1]
+    return db.query(SuppressionList).filter(SuppressionList.email.in_([address, domain, "@" + domain])).first()
+
+
+def send_outreach_email(db: Session, email_id: str, bypass_rate_limits: bool = False) -> Dict[str, Any]:
+    """Only a confirmed SMTP acceptance can create a Sent record. Never simulates delivery."""
+    from sqlalchemy import update
+    from app.models.dispatch_lock import DispatchLock
+    import ssl
     email_obj = db.query(OutreachEmail).filter(OutreachEmail.email_id == email_id).first()
+    def fail(message):
+        return {"success": False, "error": message}
     if not email_obj:
-        return {"success": False, "error": f"Email '{email_id}' not found"}
-
-    # 1. Gate: Mode A Human Signoff
+        return fail("Email not found.")
+    if email_obj.status != "Approved" or not email_obj.approved_by:
+        return fail("Mode A Violation: authenticated operator approval is required.")
+    if bypass_rate_limits:
+        return fail("Rate limit bypass is disabled.")
+    if not settings.OUTREACH_ENABLED:
+        return fail("Email sending is disabled. Configure and enable outreach first.")
+    if not settings.SMTP_USER or not settings.SMTP_PASSWORD or not settings.SMTP_FROM_EMAIL:
+        return fail("SMTP credentials and an explicit sender address are required. No email was sent.")
+    now = datetime.now(timezone.utc)
+    if email_obj.scheduled_for:
+        due = email_obj.scheduled_for.replace(tzinfo=timezone.utc) if email_obj.scheduled_for.tzinfo is None else email_obj.scheduled_for
+        if due > now:
+            return fail("Email is not due yet.")
+    # Serialize quota/claim across server workers using a database row lock.
+    db.execute(update(DispatchLock).where(DispatchLock.id == 1).values(version=DispatchLock.version + 1))
+    db.refresh(email_obj)
     if email_obj.status != "Approved":
-        return {
-            "success": False,
-            "error": f"Mode A Violation: Email has status '{email_obj.status}'. Only 'Approved' emails can be dispatched."
-        }
-
-    # 2. Gate: Suppression List Check
-    norm_to_email = email_obj.to_email.lower().strip()
-    suppressed = db.query(SuppressionList).filter(SuppressionList.email == norm_to_email).first()
-    if suppressed:
+        db.rollback()
+        return fail("Email is already being dispatched or has changed state.")
+    from app.services.automation_service import dispatch_permission
+    policy_error = dispatch_permission(db, email_obj)
+    if policy_error:
+        db.rollback()
+        return fail(policy_error)
+    lead = db.query(Lead).filter(Lead.lead_id == email_obj.lead_id).first()
+    if is_suppressed(db, email_obj.to_email):
         email_obj.status = "Suppressed"
-        email_obj.error_message = f"Recipient is on suppression list: {suppressed.reason}"
         db.commit()
-        return {
-            "success": False,
-            "error": f"Email '{norm_to_email}' is on suppression list ({suppressed.reason}). Dispatch blocked."
-        }
-
-    # 3. Gate: Rate Limiting
-    if not bypass_rate_limits:
-        metrics = get_send_window_metrics(db)
-        if not metrics["can_send"]:
-            return {
-                "success": False,
-                "error": f"Dispatch rate limit reached (Sent today: {metrics['sent_today']}/{metrics['daily_limit']}, Sent hour: {metrics['sent_this_hour']}/{metrics['hourly_limit']})"
-            }
-
-    # 4. Transmission (Real SMTP or Mock Dispatch)
-    dispatch_success = False
-    delivery_msg = ""
-
-    from_addr = settings.SMTP_FROM_EMAIL or f"exports@{settings.SMTP_HOST.replace('smtp.', '')}"
-    from_name = settings.SMTP_FROM_NAME or "Indian Export Corporation"
-
-    if settings.SMTP_USER and settings.SMTP_PASSWORD:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = email_obj.subject
-            msg["From"] = f"{from_name} <{from_addr}>"
-            msg["To"] = email_obj.to_email
-
-            part1 = MIMEText(email_obj.body_text, "plain")
-            msg.attach(part1)
-            if email_obj.body_html:
-                part2 = MIMEText(email_obj.body_html, "html")
-                msg.attach(part2)
-
-            if settings.SMTP_USE_SSL:
-                with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15.0) as server:
-                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                    server.sendmail(from_addr, [email_obj.to_email], msg.as_string())
-            else:
-                with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15.0) as server:
-                    server.starttls()
-                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                    server.sendmail(from_addr, [email_obj.to_email], msg.as_string())
-
-            dispatch_success = True
-            delivery_msg = f"Dispatched via {settings.SMTP_HOST} SSL"
-
-        except smtplib.SMTPRecipientsRefused as e:
-            # Permanent bounce -> auto-suppress
-            email_obj.status = "Failed"
-            email_obj.error_message = f"Hard bounce / Recipient refused: {e}"
-            supp = SuppressionList(
-                email=norm_to_email,
-                reason="Hard Bounce",
-                notes=f"Auto-suppressed following SMTP recipient refusal on {email_obj.email_id}"
-            )
-            db.add(supp)
-            db.commit()
-            return {"success": False, "error": f"Recipient refused: {e}. Added to suppression list."}
-
-        except Exception as exc:
-            email_obj.status = "Failed"
-            email_obj.error_message = f"SMTP transmission error: {str(exc)[:200]}"
-            db.commit()
-            return {"success": False, "error": email_obj.error_message}
-
-    else:
-        # Mock / Development mode dispatch simulation
-        dispatch_success = True
-        delivery_msg = f"[MOCK DISPATCH] Simulated delivery to {email_obj.to_email} (SMTP credentials not set)"
-
-    # 5. Success State Update
-    if dispatch_success:
-        now_ts = datetime.now(timezone.utc)
-        email_obj.status = "Sent"
-        email_obj.sent_at = now_ts
-        email_obj.error_message = None
-
-        # Synchronize associated Lead in CRM
-        lead = db.query(Lead).filter(Lead.lead_id == email_obj.lead_id).first()
-        if lead:
-            lead.outreach_status = "Sent"
-            lead.pipeline_stage = "Email Sent"
-            # Schedule next follow-up in 4 calendar days (PRD standard interval)
-            lead.next_followup = now_ts + timedelta(days=4)
-            ts_str = now_ts.strftime("%Y-%m-%d %H:%M:%S UTC")
-            log_note = f"[Outreach Dispatched at {ts_str}]: Seq {email_obj.sequence_step} sent to {email_obj.to_email}. Next follow-up scheduled for {(now_ts + timedelta(days=4)).strftime('%Y-%m-%d')}."
-            if lead.notes:
-                lead.notes = f"{lead.notes}\n{log_note}"
-            else:
-                lead.notes = log_note
-
+        return fail("Recipient is on the suppression list.")
+    if not lead or lead.verification_status != "Verified" or lead.risk_level != "LOW" or lead.outreach_status in {"Replied", "Opted-Out", "Suppressed", "Bounced"}:
+        db.rollback()
+        return fail("Recipient is unverified, high risk, or their outreach has been halted.")
+    sent = db.query(OutreachEmail).filter(OutreachEmail.lead_id == lead.lead_id, OutreachEmail.status.in_(["Sent", "Delivered", "Replied"])).all()
+    if len(sent) >= 3 or any(e.sequence_step == email_obj.sequence_step for e in sent) or email_obj.sequence_step != len(sent) + 1:
+        db.rollback()
+        return fail("Cadence limit or sequence order would be violated.")
+    if not get_send_window_metrics(db)["can_send"]:
+        db.rollback()
+        return fail("Dispatch rate limit reached.")
+    email_obj.status = "Sending"
+    email_obj.sent_at = now  # Reserve quota before network IO.
+    db.commit()  # A worker crash leaves an unclaimable Sending record for investigation.
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = email_obj.subject
+    msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+    msg["To"] = email_obj.to_email
+    msg.attach(MIMEText(email_obj.body_text, "plain"))
+    if email_obj.body_html:
+        msg.attach(MIMEText(email_obj.body_html, "html"))
+    try:
+        context = ssl.create_default_context()
+        if settings.SMTP_USE_SSL:
+            server_ctx = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15, context=context)
+        else:
+            server_ctx = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
+        with server_ctx as server:
+            if not settings.SMTP_USE_SSL:
+                server.starttls(context=context)
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            refused = server.sendmail(settings.SMTP_FROM_EMAIL, [email_obj.to_email], msg.as_string())
+            if refused:
+                raise smtplib.SMTPRecipientsRefused(refused)
+    except smtplib.SMTPRecipientsRefused:
+        email_obj.status = "Failed"
+        email_obj.error_message = "SMTP recipient refused."
+        if not is_suppressed(db, email_obj.to_email):
+            db.add(SuppressionList(email=email_obj.to_email.lower().strip(), reason="Hard Bounce"))
         db.commit()
-        db.refresh(email_obj)
-
-        return {
-            "success": True,
-            "email_id": email_obj.email_id,
-            "to_email": email_obj.to_email,
-            "status": "Sent",
-            "sent_at": now_ts.isoformat(),
-            "message": delivery_msg,
-            "lead_id": email_obj.lead_id,
-        }
+        return fail(email_obj.error_message)
+    except Exception:
+        # SMTP may have accepted DATA before a connection loss. Never retry automatically.
+        email_obj.status = "Delivery Unknown"
+        email_obj.error_message = "SMTP outcome is uncertain. Check provider logs before retrying."
+        db.commit()
+        return fail(email_obj.error_message)
+    email_obj.status, email_obj.sent_at, email_obj.error_message = "Sent", now, None
+    lead.outreach_status, lead.pipeline_stage = "Sent", "Email Sent"
+    lead.next_followup = now + timedelta(days=4) if email_obj.sequence_step < 3 else None
+    db.commit()
+    return {"success": True, "email_id": email_obj.email_id, "to_email": email_obj.to_email, "status": "Sent", "sent_at": now.isoformat(), "message": "Accepted by SMTP server; delivery is not confirmed.", "lead_id": lead.lead_id}
 
 
 def dispatch_approved_emails(

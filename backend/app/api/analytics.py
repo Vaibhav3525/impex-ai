@@ -21,7 +21,7 @@ def get_dashboard_metrics(db: Session = Depends(get_db)):
     unverified_leads = db.query(func.count(Lead.id)).filter(Lead.verification_status == "Unverified").scalar() or 0
     
     # Qualification Tiers
-    high_priority = db.query(func.count(Lead.id)).filter(Lead.buyer_score >= 80.0).scalar() or 0
+    high_priority = db.query(func.count(Lead.id)).filter(Lead.buyer_score >= 80.0, Lead.verification_status == "Verified").scalar() or 0
     potential_candidates = db.query(func.count(Lead.id)).filter(Lead.buyer_score >= 60.0, Lead.buyer_score < 80.0).scalar() or 0
     low_priority = db.query(func.count(Lead.id)).filter(Lead.buyer_score < 60.0).scalar() or 0
     
@@ -52,6 +52,7 @@ def get_dashboard_metrics(db: Session = Depends(get_db)):
     return {
         "summary": {
             "total_leads_discovered": total_leads,
+            "high_risk_count": db.query(Lead).filter(Lead.risk_level.in_(["HIGH", "CRITICAL"])).count(),
             "verified_candidates": verified_leads,
             "partially_verified": partially_verified,
             "unverified": unverified_leads,
@@ -85,7 +86,7 @@ def get_executive_report(db: Session = Depends(get_db)):
       4. Qualified potential buyers (Score >= 60)
       5. Valid business email addresses
       6. Emails approved for outreach (Mode A signoff)
-      7. Emails successfully delivered
+      7. Emails confirmed delivered by provider
       8. Replies received
       9. Qualified buyer inquiries
       10. Quotations and orders
@@ -104,7 +105,7 @@ def get_executive_report(db: Session = Depends(get_db)):
     ).scalar() or 0
     
     delivered_emails = db.query(func.count(OutreachEmail.id)).filter(
-        OutreachEmail.status.in_(["Sent", "Delivered", "Replied"])
+        OutreachEmail.status == "Delivered"
     ).scalar() or 0
     
     replies_received = db.query(func.count(BuyerReply.id)).scalar() or 0

@@ -39,6 +39,21 @@ from app.api.outreach import (
     add_to_suppression_list,
 )
 
+@pytest.fixture(autouse=True)
+def configured_test_smtp(monkeypatch):
+    import smtplib
+    class Transport:
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, *args): pass
+        def sendmail(self, *args): return {}
+    monkeypatch.setattr(settings, "OUTREACH_ENABLED", True)
+    monkeypatch.setattr(settings, "SMTP_USER", "fixture")
+    monkeypatch.setattr(settings, "SMTP_PASSWORD", "fixture")
+    monkeypatch.setattr(settings, "SMTP_FROM_EMAIL", "fixture@fixture.invalid")
+    monkeypatch.setattr(smtplib, "SMTP_SSL", Transport)
+
 
 @pytest.fixture(scope="module")
 def db_session():
@@ -65,11 +80,14 @@ def _make_dispatch_lead(db: Session, email_prefix: str = "buyer") -> Lead:
         import_evidence="Major distributor of specialty food across Scandinavia.",
     )
     lead, _ = ingest_lead(db, lc)
+    lead.verification_status = "Verified"
+    lead.risk_level = "LOW"
+    db.commit()
     return lead
 
 
 def _make_dispatch_product(db: Session) -> ProductProfile:
-    prod = ProductProfile(
+    prod = ProductProfile(export_readiness=True, price_unit="KG",
         product_name="Premium 1121 Sella Basmati Rice",
         product_category="Agricultural Commodities & Grains",
         hs_code="10063020",
@@ -122,7 +140,7 @@ def test_mode_a_blocks_unapproved_email_dispatch(db_session):
     res = send_outreach_email(db=db_session, email_id=email_obj.email_id)
     assert res["success"] is False
     assert "Mode A Violation" in res["error"]
-    assert "Only 'Approved' emails can be dispatched" in res["error"]
+    assert "approval is required" in res["error"]
 
 
 def test_suppressed_recipient_blocked(db_session):
@@ -169,7 +187,7 @@ def test_successful_dispatch_and_crm_sync(db_session):
     approve_outreach_email(email_id=email_obj.email_id, req=appr, db=db_session)
 
     # 3. Dispatch
-    res = send_outreach_email(db=db_session, email_id=email_obj.email_id, bypass_rate_limits=True)
+    res = send_outreach_email(db=db_session, email_id=email_obj.email_id, bypass_rate_limits=False)
     assert res["success"] is True
     assert res["status"] == "Sent"
 
@@ -189,7 +207,7 @@ def test_successful_dispatch_and_crm_sync(db_session):
         followup = followup.replace(tzinfo=timezone.utc)
     diff_days = (followup - datetime.now(timezone.utc)).total_seconds() / 86400.0
     assert 3.5 <= diff_days <= 4.5
-    assert "Next follow-up scheduled" in lead.notes
+    assert lead.next_followup is not None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -206,8 +224,8 @@ def test_batch_dispatch_service(db_session):
     appr = EmailApprovalRequest(reviewer_name="Batch Officer")
     approve_outreach_email(email_id=email_obj.email_id, req=appr, db=db_session)
 
-    # Run batch dispatch with bypass_rate_limits=True for isolated test execution
-    batch_res = dispatch_approved_emails(db=db_session, max_emails=10, bypass_rate_limits=True)
+    # Run batch dispatch with bypass_rate_limits=False for isolated test execution
+    batch_res = dispatch_approved_emails(db=db_session, max_emails=10, bypass_rate_limits=False)
     assert batch_res["dispatched_count"] >= 1
     assert "updated_metrics" in batch_res
 
@@ -227,6 +245,6 @@ def test_api_dispatch_endpoints(db_session):
     approve_outreach_email(email_id=email_obj.email_id, req=EmailApprovalRequest(reviewer_name="API Approver"), db=db_session)
 
     # Dispatch via API function
-    dispatch_res = dispatch_single_email(email_id=email_obj.email_id, bypass_rate_limits=True, db=db_session)
+    dispatch_res = dispatch_single_email(email_id=email_obj.email_id, bypass_rate_limits=False, db=db_session)
     assert dispatch_res["success"] is True
     assert dispatch_res["status"] == "Sent"

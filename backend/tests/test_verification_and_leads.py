@@ -67,8 +67,8 @@ def test_lead_ingestion_and_deduplication():
 
         # Verify scoring
         log = run_lead_verification(db, lead_1)
-        assert lead_1.buyer_score >= 60.0
-        assert lead_1.verification_status in ["Verified", "Partially Verified"]
+        assert lead_1.buyer_score == 0.0
+        assert lead_1.verification_status == "Unverified"
         assert log.total_score == lead_1.buyer_score
     finally:
         db.close()

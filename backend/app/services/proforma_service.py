@@ -29,55 +29,24 @@ def generate_proforma_invoice(
     Constructs a formal commercial export proforma invoice from a deal and lead record.
     Automatically calculates totals, persists the invoice, and updates CRM deal stage.
     """
+    from fastapi import HTTPException
+    from decimal import Decimal, ROUND_HALF_UP
+    if req is None:
+        raise HTTPException(422, "Exporter, bank, shipping and item details are required. No defaults are issued.")
+    if req.deal_id != deal.deal_id:
+        raise HTTPException(422, "Invoice deal_id must match the requested deal.")
     invoice_no = _generate_invoice_no()
-    
-    # 1. Determine Line Items & Commercial Values
-    items_data: List[Dict[str, Any]] = []
-    
-    if req and req.items and len(req.items) > 0:
-        for it in req.items:
-            items_data.append(it.model_dump())
-    else:
-        # Auto-construct line item from deal record
-        qty_str = deal.required_quantity or "1"
-        # Parse numeric quantity if possible
-        try:
-            qty_num = float(''.join(c for c in qty_str if (c.isdigit() or c == '.')) or 1.0)
-        except Exception:
-            qty_num = 1.0
-
-        unit_price = deal.target_price or 1000.0
-        line_total = round(qty_num * unit_price, 2)
-        
-        items_data.append({
-            "description": f"{deal.product_name} (Export Quality Grade)",
-            "hs_code": deal.hs_code or "1006.30",
-            "quantity": qty_num,
-            "unit": "MT",
-            "unit_price": unit_price,
-            "total_amount": line_total
-        })
-
-    subtotal = sum(float(i.get("total_amount", 0.0)) for i in items_data)
-    freight = req.freight_insurance if req else 0.0
-    grand_total = round(subtotal + freight, 2)
-    currency = (req.currency if req else deal.currency) or "USD"
-
-    # 2. Exporter & Banking Details
-    exporter_name = req.exporter_name if req else "Bharat Agri-Exim Private Limited"
-    exporter_addr = req.exporter_address if req else "Nariman Point, Mumbai - 400021, Maharashtra, India"
-    exporter_iec = req.exporter_iec if req else "0319876543"
-    exporter_gstin = req.exporter_gstin if req else "27AABCB1234F1Z8"
-    exporter_ad_code = req.exporter_ad_code if req else "0210045"
-    bank_name = req.bank_name if req else "State Bank of India (Overseas Commercial Branch)"
-    bank_swift = req.bank_swift_code if req else "SBININBB001"
-    bank_acc = req.bank_account_number if req else "CA-9876543210"
-
-    # 3. Buyer & Shipping Terms
-    incoterms = (req.incoterms if req else deal.incoterms) or "FOB"
-    payment_terms = (req.payment_terms if req and req.payment_terms else deal.payment_terms) or "30% Advance + 70% against BL scan"
-    port_loading = req.port_of_loading if req else "Nhava Sheva (JNPT), Mumbai"
-    dest_port = (req.destination_port if req and req.destination_port else deal.destination_port) or "Jebel Ali Port, Dubai"
+    items_data = [item.model_dump() for item in req.items]
+    subtotal_decimal = sum((Decimal(str(item["total_amount"])) for item in items_data), Decimal("0"))
+    freight = req.freight_insurance
+    subtotal = float(subtotal_decimal)
+    grand_total = float((subtotal_decimal + Decimal(str(freight))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    currency = req.currency
+    exporter_name, exporter_addr = req.exporter_name, req.exporter_address
+    exporter_iec, exporter_gstin, exporter_ad_code = req.exporter_iec, req.exporter_gstin, req.exporter_ad_code
+    bank_name, bank_swift, bank_acc = req.bank_name, req.bank_swift_code, req.bank_account_number
+    incoterms, payment_terms = req.incoterms, req.payment_terms
+    port_loading, dest_port = req.port_of_loading, req.destination_port
 
     invoice = ProformaInvoice(
         invoice_number=invoice_no,
@@ -97,7 +66,7 @@ def generate_proforma_invoice(
         buyer_address=lead.city or lead.country,
         buyer_contact=lead.contact_name,
         buyer_email=lead.business_email,
-        country_of_origin="India",
+        country_of_origin=req.country_of_origin,
         port_of_loading=port_loading,
         destination_port=dest_port,
         incoterms=incoterms,
@@ -107,8 +76,8 @@ def generate_proforma_invoice(
         freight_insurance=freight,
         total_amount=grand_total,
         currency=currency,
-        notes=req.notes if req else "Standard export packing in 25/50kg seaworthy bags. Pre-shipment quality inspection by SGS / Bureau Veritas.",
-        status="Issued"
+        notes=req.notes,
+        status="Draft"
     )
     db.add(invoice)
 
@@ -125,7 +94,7 @@ def generate_proforma_invoice(
         deal.stage = "Quotation Prepared"
     
     deal.updated_at = datetime.now(timezone.utc)
-    log_msg = f"[Proforma Invoice Issued]: #{invoice_no} for {currency} {grand_total:,.2f} ({incoterms} {dest_port})"
+    log_msg = f"[Proforma Draft Created]: #{invoice_no} for {currency} {grand_total:,.2f} ({incoterms} {dest_port})"
     if deal.notes:
         deal.notes = f"{deal.notes}\n{log_msg}"
     else:
@@ -146,6 +115,12 @@ def render_proforma_html(invoice: ProformaInvoice) -> str:
     """
     Renders a print-ready, professional HTML Proforma Invoice suitable for direct browser display or PDF export.
     """
+    from html import escape
+    from types import SimpleNamespace
+    values = {column.name: getattr(invoice, column.name) for column in ProformaInvoice.__table__.columns}
+    values = {key: escape(value) if isinstance(value, str) else value for key, value in values.items()}
+    values["items"] = [{key: escape(value) if isinstance(value, str) else value for key, value in item.items()} for item in (invoice.items or [])]
+    invoice = SimpleNamespace(**values)
     date_str = invoice.issue_date.strftime("%d-%b-%Y")
     
     line_rows = ""
@@ -174,7 +149,7 @@ def render_proforma_html(invoice: ProformaInvoice) -> str:
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Proforma Invoice - {invoice.invoice_number}</title>
+  <title>DRAFT Proforma Invoice - {invoice.invoice_number}</title>
   <style>
     body {{
       font-family: Arial, sans-serif;
@@ -371,9 +346,9 @@ def render_proforma_html(invoice: ProformaInvoice) -> str:
     <div class="totals-area">
       <div class="banking-box">
         <div class="section-title">Exporter Bank Routing Details</div>
-        <div><strong>Bank Name:</strong> {invoice.bank_name or 'State Bank of India'}</div>
-        <div><strong>SWIFT / BIC Code:</strong> {invoice.bank_swift_code or 'SBININBB001'}</div>
-        <div><strong>Account / IBAN:</strong> {invoice.bank_account_number or 'CA-9876543210'}</div>
+        <div><strong>Bank Name:</strong> {invoice.bank_name or 'Not provided'}</div>
+        <div><strong>SWIFT / BIC Code:</strong> {invoice.bank_swift_code or 'Not provided'}</div>
+        <div><strong>Account / IBAN:</strong> {invoice.bank_account_number or 'Not provided'}</div>
         <div><strong>Beneficiary:</strong> {invoice.exporter_name}</div>
         <div style="margin-top: 6px; color: #64748b;"><em>Note: All overseas bank remittance charges on buyer's account.</em></div>
       </div>
@@ -387,7 +362,7 @@ def render_proforma_html(invoice: ProformaInvoice) -> str:
 
     <div style="background: #f8fafc; padding: 10px 15px; border-radius: 6px; font-size: 11px; border: 1px solid #e2e8f0;">
       <strong>Special Terms & Conditions:</strong><br>
-      {invoice.notes or 'Goods to be inspected prior to container sealing by nominated independent surveyor. Quality conforms strictly to contracted grade specifications.'}
+      {invoice.notes or 'Commercial draft. Review all exporter, bank, product and shipping details before use.'}
     </div>
 
     <!-- Statutory Declarations -->

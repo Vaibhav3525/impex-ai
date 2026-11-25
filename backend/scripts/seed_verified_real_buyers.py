@@ -882,6 +882,7 @@ REAL_BUYERS = [
 ]
 
 def seed_database():
+    raise RuntimeError("Legacy demo seeding is disabled: it deletes records and assigns unsupported verification. Import sourced records through the authenticated API instead.")
     print("Initializing Database schema...")
     init_db()
     db = SessionLocal()

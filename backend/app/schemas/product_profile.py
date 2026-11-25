@@ -16,6 +16,7 @@ class ProductProfileBase(BaseModel):
     target_price_min: Optional[float] = Field(None, description="Minimum target price in specified currency")
     target_price_max: Optional[float] = Field(None, description="Maximum target price in specified currency")
     currency: str = Field("USD", description="Currency code (USD, EUR, etc.)")
+    price_unit: Optional[str] = Field(None, description="Price denominator: MT, KG, Unit, etc. Required to include pricing in outreach.")
     incoterms: str = Field("FOB", description="Default Incoterms (FOB, CIF, CFR, etc.)")
     
     preferred_payment_terms: str = Field(
@@ -25,13 +26,14 @@ class ProductProfileBase(BaseModel):
     target_countries: List[str] = Field(default_factory=list, description="Priority buyer countries")
     excluded_countries: List[str] = Field(default_factory=list, description="Markets to exclude (embargo, sanctions, non-trade)")
     certifications: List[str] = Field(default_factory=list, description="Exporter certifications (APEDA, HACCP, ISO, etc.)")
-    export_readiness: bool = Field(True, description="Whether export readiness audit is complete")
+    export_readiness: bool = Field(False, description="Whether export readiness audit is complete")
     is_active: bool = Field(True, description="Active status for buyer matching")
 
 class ProductProfileCreate(ProductProfileBase):
     pass
 
 class ProductProfileUpdate(BaseModel):
+    price_unit: Optional[str] = None
     product_name: Optional[str] = None
     product_category: Optional[str] = None
     hs_code: Optional[str] = None

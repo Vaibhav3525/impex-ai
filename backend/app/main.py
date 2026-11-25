@@ -6,6 +6,12 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.api import api_router
 
+if settings.APP_ENV == "production":
+    if len(settings.ADMIN_PASSWORD) < 16 or not os.environ.get("SECRET_KEY") or len(settings.SECRET_KEY) < 32:
+        raise RuntimeError("Production requires ADMIN_PASSWORD (16+ characters) and a persistent SECRET_KEY (32+ characters).")
+    if settings.DATABASE_URL.startswith("sqlite") and not settings.DATABASE_PERSISTENT:
+        raise RuntimeError("Production SQLite requires a persistent disk and DATABASE_PERSISTENT=True; otherwise use PostgreSQL.")
+
 # Initialize Database Schema on load
 init_db()
 

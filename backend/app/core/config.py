@@ -1,4 +1,5 @@
 import os
+import secrets
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
@@ -16,7 +17,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./impex_leads.db"
 
     # Security
-    SECRET_KEY: str = "development-secret-key-replace-in-prod"
+    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_urlsafe(48))
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""
+    OUTREACH_ENABLED: bool = False
+    EXPORTER_NAME: str = ""
+    DATABASE_PERSISTENT: bool = False
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -24,7 +30,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "gemini"  # "gemini" | "openai" | "mock"
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
-    LLM_MODEL: str = "gemini-1.5-pro"
+    LLM_MODEL: str = "gemini-2.5-flash"
 
     # Email
     SMTP_HOST: str = "smtp.hostinger.com"
@@ -40,6 +46,8 @@ class Settings(BaseSettings):
     HOURLY_SEND_LIMIT: int = 10
     DEFAULT_OUTREACH_MODE: str = "assisted"  # "assisted" (Mode A) | "automated" (Mode B)
     ENABLE_AUTO_FOLLOWUPS: bool = False
+    AUTOMATION_INTERVAL_SECONDS: int = Field(600, ge=60, le=86400)
+    BUYER_FEED_URL: str = ""
 
     # External Trade APIs
     UN_COMTRADE_API_KEY: str = ""

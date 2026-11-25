@@ -1,3 +1,4 @@
+from app.core.security import reviewer_identity
 """
 Day 12 — 11-Class Buyer Reply Intelligence & Response Processing API Router
 PRD §8 & §10: Automated classification of incoming buyer responses, entity extraction,
@@ -182,7 +183,7 @@ def review_reply_classification(
     else:
         reply_obj.reviewed_by_human = "APPROVED"
 
-    reply_obj.human_notes = f"Reviewed by {req.reviewer_name}: {req.human_notes}"
+    reply_obj.human_notes = f"Reviewed by {reviewer_identity()}: {req.human_notes}"
     db.commit()
     db.refresh(reply_obj)
     return reply_obj

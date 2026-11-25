@@ -68,7 +68,7 @@ def test_auto_generate_proforma_invoice_from_deal(db_session):
     """Proforma invoice automatically extracts items, calculates totals, and advances deal stage."""
     lead, deal = _make_test_lead_and_deal(db_session, price=1200.0)
 
-    invoice = generate_proforma_invoice(db_session, deal, lead)
+    invoice = generate_proforma_invoice(db_session, deal, lead, _request(deal))
 
     assert invoice.invoice_number.startswith("PI-")
     assert invoice.deal_id == deal.deal_id
@@ -92,6 +92,7 @@ def test_custom_line_items_and_cif_freight_calculation(db_session):
     lead, deal = _make_test_lead_and_deal(db_session, country="Germany")
 
     custom_req = ProformaInvoiceCreate(
+        **DETAILS,
         deal_id=deal.deal_id,
         incoterms="CIF",
         destination_port="Hamburg Port, Germany",
@@ -99,7 +100,7 @@ def test_custom_line_items_and_cif_freight_calculation(db_session):
         items=[
             InvoiceItem(
                 description="Organic Black Pepper Extra Bold 550GL",
-                hs_code="0904.11",
+                hs_code="090411",
                 quantity=10.0,
                 unit="MT",
                 unit_price=6500.0,
@@ -107,7 +108,7 @@ def test_custom_line_items_and_cif_freight_calculation(db_session):
             ),
             InvoiceItem(
                 description="Alleppey Green Cardamom 8mm Grade",
-                hs_code="0908.31",
+                hs_code="090831",
                 quantity=2.0,
                 unit="MT",
                 unit_price=22000.0,
@@ -132,7 +133,7 @@ def test_custom_line_items_and_cif_freight_calculation(db_session):
 def test_render_proforma_html_statutory_compliance(db_session):
     """HTML rendered document contains all required Indian foreign trade statutory details."""
     lead, deal = _make_test_lead_and_deal(db_session)
-    invoice = generate_proforma_invoice(db_session, deal, lead)
+    invoice = generate_proforma_invoice(db_session, deal, lead, _request(deal))
 
     html = render_proforma_html(invoice)
 
@@ -144,7 +145,7 @@ def test_render_proforma_html_statutory_compliance(db_session):
     assert "AD Code:" in html
     assert "Country of Origin:</strong><br>India" in html
     assert "SWIFT / BIC Code:" in html
-    assert "Foreign Trade (Development and Regulation) Act" in html
+    assert "DRAFT" in html
     assert "Accepted By (Buyer / Importer)" in html
     assert "Authorized Export Signatory" in html
 
@@ -154,7 +155,7 @@ def test_proforma_invoice_api_endpoints(db_session):
     lead, deal = _make_test_lead_and_deal(db_session)
 
     # 1. POST create PI
-    res_create = create_deal_proforma_invoice(deal.deal_id, db=db_session)
+    res_create = create_deal_proforma_invoice(deal.deal_id, req=_request(deal), db=db_session)
     assert res_create.deal_id == deal.deal_id
     assert res_create.invoice_number.startswith("PI-")
     assert res_create.total_amount > 0
@@ -173,3 +174,8 @@ def test_proforma_invoice_api_endpoints(db_session):
     invoices_list = list_proforma_invoices(db=db_session)
     assert len(invoices_list) > 0
     assert any(inv.invoice_number == res_create.invoice_number for inv in invoices_list)
+
+
+DETAILS = dict(exporter_name="Fixture Exporter Ltd", exporter_address="Fixture office address, Mumbai, India", exporter_iec="ABCDE1234F", exporter_gstin="27ABCDE1234F1Z5", exporter_ad_code="1234567", bank_name="Fixture Bank", bank_swift_code="TESTINBBXXX", bank_account_number="123456789012", country_of_origin="India", port_of_loading="Mumbai")
+def _request(deal):
+    return ProformaInvoiceCreate(**DETAILS, deal_id=deal.deal_id, incoterms="FOB", destination_port="Jebel Ali", payment_terms="100% advance", currency="USD", items=[InvoiceItem(description="Fixture rice", hs_code="100630", quantity=50, unit="MT", unit_price=deal.target_price or 1200)])
