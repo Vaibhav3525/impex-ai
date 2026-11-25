@@ -24,7 +24,7 @@ class IncomingReplyRequest(BaseModel):
     deal_id: Optional[str] = Field(None, description="Optional linked deal ID")
 
 class ReplyReviewRequest(BaseModel):
-    reviewer_name: str = Field(..., description="Compliance officer or export manager reviewing classification")
+    reviewer_name: str = Field("", description="Compliance officer or export manager reviewing classification")
     classification_override: Optional[str] = Field(None, description="Corrected class if model misclassified")
     human_notes: str = Field(..., description="Audit notes or instructions for sales desk")
 

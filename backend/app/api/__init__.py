@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from app.core.security import require_operator, router as auth_router
 from app.api.health import router as health_router
 from app.api.leads import router as leads_router
 from app.api.analytics import router as analytics_router
@@ -8,8 +9,10 @@ from app.api.products import router as products_router
 from app.api.pipeline import router as pipeline_router
 from app.api.outreach import router as outreach_router
 from app.api.replies import router as replies_router
+from app.api.automation import router as automation_router
 
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_operator)])
+api_router.include_router(auth_router)
 api_router.include_router(health_router)
 api_router.include_router(leads_router)
 api_router.include_router(analytics_router)
@@ -19,3 +22,4 @@ api_router.include_router(products_router)
 api_router.include_router(pipeline_router)
 api_router.include_router(outreach_router)
 api_router.include_router(replies_router)
+api_router.include_router(automation_router)

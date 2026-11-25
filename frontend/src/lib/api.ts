@@ -3,11 +3,7 @@
  * Connects Next.js 14 Dashboard to FastAPI backend at /api/v1
  */
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "/api/v1"
-    : "http://localhost:8000/api/v1");
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
 export interface Lead {
   id: number;
@@ -146,14 +142,17 @@ export interface KanbanBoardResponse {
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const res = await fetch(url, {
+    ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "X-Requested-With": "impex-ui",
       ...(options?.headers || {}),
     },
-    ...options,
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("impex-session-expired"));
     let errorDetail = res.statusText;
     try {
       const errJson = await res.json();
@@ -166,6 +165,15 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  automationStatus: () => request<any>("/automation/status"),
+  automationSwitch: (enabled: boolean) => request<any>("/automation/switch", { method: "POST", body: JSON.stringify({ enabled }) }),
+  automationRun: () => request<any>("/automation/run", { method: "POST" }),
+  createCampaign: (payload: any) => request<any>("/automation/campaigns", { method: "POST", body: JSON.stringify(payload) }),
+  previewCampaign: (id: number) => request<any>(`/automation/campaigns/${id}/preview`),
+  authorizeCampaign: (id: number) => request<any>(`/automation/campaigns/${id}/authorize`, { method: "POST", body: JSON.stringify({ confirm: true, days: 30 }) }),
+  pauseCampaign: (id: number) => request<any>(`/automation/campaigns/${id}/pause`, { method: "POST" }),
+  recordEvidence: (id: string, evidence: any) => request<any>(`/leads/${id}/verify-manual`, { method: "POST", body: JSON.stringify({ evidence: [evidence], notes: evidence.finding, run_live_checks: false }) }),
+  verifyPayment: (id: string, reference: string, notes: string) => request<any>(`/deals/${id}/payment-verification`, { method: "POST", body: JSON.stringify({ reference, notes }) }),
   // System Health
   getHealth: () => request<{ status: string; app: string; version: string }>("/health"),
 
@@ -305,23 +313,24 @@ export const api = {
   composeOutreachEmail: (leadId: string, params?: { product_id?: string; sequence_step?: number }) =>
     request<OutreachEmail>(`/outreach/${leadId}/compose`, {
       method: "POST",
-      body: JSON.stringify(params || {}),
+      body: JSON.stringify({ product_profile_id: params?.product_id, sequence_step: params?.sequence_step || 1 }),
     }),
   approveOutreachEmail: (emailId: string) =>
     request<OutreachEmail>(`/outreach/emails/${emailId}/approve`, {
       method: "POST",
+      body: JSON.stringify({}),
     }),
   rejectOutreachEmail: (emailId: string, reason: string) =>
     request<OutreachEmail>(`/outreach/emails/${emailId}/reject`, {
       method: "POST",
-      body: JSON.stringify({ rejection_reason: reason }),
+      body: JSON.stringify({ reason }),
     }),
   dispatchEmail: (emailId: string) =>
     request<any>(`/outreach/emails/${emailId}/send`, {
       method: "POST",
     }),
   dispatchBatch: (limit: number = 10) =>
-    request<any>(`/outreach/dispatch-batch?limit=${limit}`, {
+    request<any>(`/outreach/dispatch-batch?max_emails=${limit}`, {
       method: "POST",
     }),
 

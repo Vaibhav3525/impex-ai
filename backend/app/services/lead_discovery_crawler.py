@@ -307,7 +307,7 @@ class LeadDiscoveryCrawler:
         results: List[DiscoveredLead] = []
 
         # 1. Match from Verified Global Importer Registry
-        for reg in GLOBAL_DIRECTORY_REGISTRY:
+        for reg in []:  # Static references are not live discovery evidence.
             # Country match check
             if country_norm and country_norm != "all":
                 reg_country = reg["country"].lower()
@@ -343,52 +343,8 @@ class LeadDiscoveryCrawler:
                 ))
 
         # 2. Synthesize structured directory leads for broader coverage if requested
-        if len(results) < limit:
-            remaining = limit - len(results)
-            synthetic_directory_leads = self._generate_directory_leads(commodity, country or "Global", count=remaining)
-            results.extend(synthetic_directory_leads)
-
         return results[:limit]
 
     def _generate_directory_leads(self, commodity: str, country: str, count: int) -> List[DiscoveredLead]:
-        """
-        Generates realistic directory records from official public chambers and trade boards
-        when querying emerging markets or specific niche commodities.
-        """
-        hub_markets = {
-            "United Arab Emirates": ("Dubai", "+971 4", ".ae"),
-            "Saudi Arabia": ("Jeddah", "+966 12", ".com.sa"),
-            "Germany": ("Hamburg", "+49 40", ".de"),
-            "United Kingdom": ("London", "+44 20", ".co.uk"),
-            "United States": ("New York", "+1 212", ".com"),
-            "Netherlands": ("Rotterdam", "+31 10", ".nl"),
-            "Singapore": ("Singapore", "+65 6", ".com.sg"),
-        }
-
-        m_country = country if country in hub_markets else "United Arab Emirates"
-        city, phone_pfx, tld = hub_markets[m_country]
-
-        clean_comm = commodity.title()
-        comm_slug = re.sub(r'[^a-zA-Z0-9]', '', commodity.lower())[:8]
-
-        generated = []
-        for i in range(1, count + 1):
-            comp_name = f"{clean_comm} Import Hub {city} #{i}"
-            domain = f"{comm_slug}-importers-{city.lower()}{i}{tld}"
-            generated.append(DiscoveredLead(
-                company_name=comp_name,
-                country=m_country,
-                city=city,
-                website=f"https://www.{domain}",
-                product_category=f"{clean_comm} & Agro Commodities",
-                contact_name=f"Procurement Lead {i}",
-                job_title="Import Sourcing Manager",
-                business_email=f"sourcing@{domain}",
-                phone_number=f"{phone_pfx} {700000 + i}",
-                source=f"{m_country} Chamber of Commerce & Industry Directory",
-                source_url=f"https://trade-registry.{m_country.lower().replace(' ', '')}.gov/importers",
-                import_evidence=f"Registered commercial importer of {clean_comm}. Active customs filing records for seaport container consignments.",
-                notes=f"Automated directory discovery for '{commodity}' in '{m_country}'."
-            ))
-        return generated
-
+        """No source results means no buyers; synthetic companies are never generated."""
+        return []

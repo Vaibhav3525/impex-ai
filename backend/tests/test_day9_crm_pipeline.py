@@ -159,6 +159,7 @@ def test_deal_crud_lifecycle(db_session):
     assert updated_deal.confirmed_order_value == 115000.0
     assert updated_deal.stage == "Quotation Prepared"
 
+    _approve_payment(db_session, created_deal)
     # 4. Advance Stage to Order Confirmed
     stage_req = StageTransitionRequest(new_stage="Order Confirmed", notes="Contract signed and 30% advance received.")
     staged_deal = update_deal_stage(deal_id=created_deal.deal_id, req=stage_req, db=db_session)
@@ -200,7 +201,7 @@ def test_pipeline_summary_tracks_actual_revenue(db_session):
     deal_in = DealCreate(
         lead_id=lead.lead_id,
         product_name="Malabar Black Pepper 550GL",
-        stage="Order Confirmed",
+        stage="Negotiation",
         notes="Test confirmed deal for revenue calculation",
     )
     confirmed_deal = create_deal(deal_in=deal_in, db=db_session)
@@ -213,6 +214,8 @@ def test_pipeline_summary_tracks_actual_revenue(db_session):
         db=db_session,
     )
 
+    _approve_payment(db_session, confirmed_deal)
+    update_deal_stage(confirmed_deal.deal_id, StageTransitionRequest(new_stage="Order Confirmed"), db_session)
     summary = get_pipeline_summary(db=db_session)
 
     assert len(summary.funnel) == 15
@@ -220,3 +223,14 @@ def test_pipeline_summary_tracks_actual_revenue(db_session):
     assert summary.total_confirmed_revenue_usd >= 42000.0
     assert summary.total_quotation_value_usd >= 45000.0
 
+
+
+def _approve_payment(db, deal):
+    from app.api.pipeline import verify_payment_evidence
+    from app.schemas.deal import PaymentEvidenceRequest
+    lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).one()
+    lead.verification_status, lead.risk_level = "Verified", "LOW"
+    lead.risk_flags, lead.payment_risk_score = [], 0
+    deal.payment_terms = "100% advance"
+    db.commit()
+    verify_payment_evidence(deal.deal_id, PaymentEvidenceRequest(reference="Fixture bank reference 123", notes="Fixture operator checked the bank credit confirmation."), db)

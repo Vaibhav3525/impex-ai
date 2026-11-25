@@ -195,7 +195,7 @@ def test_human_reviewer_override_flow(db_session):
 
     assert updated.classification == "Request for Quotation"
     assert updated.reviewed_by_human == "OVERRIDDEN"
-    assert "Senior Sales Manager" in updated.human_notes
+    assert "Reviewed by system" in updated.human_notes
 
 
 def test_list_and_filter_replies_api(db_session):

@@ -8,12 +8,12 @@ class EmailComposeRequest(BaseModel):
     custom_instructions: Optional[str] = Field(None, description="Optional focus area or specific trade note")
 
 class EmailApprovalRequest(BaseModel):
-    reviewer_name: str = Field(..., description="Identity of compliance officer or export manager approving dispatch")
+    reviewer_name: str = Field("", description="Identity of compliance officer or export manager approving dispatch")
     subject_override: Optional[str] = Field(None, description="Edited email subject line")
     body_override: Optional[str] = Field(None, description="Edited email body text")
 
 class EmailRejectionRequest(BaseModel):
-    reviewer_name: str = Field(..., description="Identity of reviewer rejecting the email")
+    reviewer_name: str = Field("", description="Identity of reviewer rejecting the email")
     reason: str = Field(..., description="Required explanation for rejection (e.g. invalid contact, market embargo)")
 
 class OutreachEmailResponse(BaseModel):

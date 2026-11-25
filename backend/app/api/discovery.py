@@ -356,50 +356,9 @@ def enrich_company_domain(
                 detail=f"Lead {req.lead_id} not found"
             )
 
-        # Apply score deltas to the existing buyer_score (clamped 0–100)
-        new_score = lead.buyer_score or 0.0
-        new_score += result.email_score_delta
-        new_score += result.website_score_delta
-        new_score += result.independent_score_delta
-        new_score = round(max(0.0, min(100.0, new_score)), 1)
-
-        # Merge new flags into existing risk flags
-        existing_flags: list = list(lead.risk_flags or [])
-        for flag in result.new_flags:
-            if flag not in existing_flags:
-                existing_flags.append(flag)
-
-        # Update verification status based on new score
-        from datetime import datetime, timezone
-        if new_score >= 80.0 and "FLAG_FREE_EMAIL_DOMAIN" not in existing_flags:
-            new_status = "Verified"
-        elif new_score >= 60.0:
-            new_status = "Partially Verified"
-        else:
-            new_status = "Unverified"
-
-        lead.buyer_score = new_score
-        lead.risk_flags = existing_flags
-        lead.verification_status = new_status
-        lead.last_verified = datetime.now(timezone.utc)
-
-        # Append enrichment evidence to notes
-        evidence_summary = " | ".join(result.evidence_notes[:5])
-        if lead.notes:
-            lead.notes = f"{lead.notes}\n[Day5 Enrichment] {evidence_summary}"
-        else:
-            lead.notes = f"[Day5 Enrichment] {evidence_summary}"
-
-        db.commit()
-        db.refresh(lead)
-
-        applied_to_lead = {
-            "lead_id": lead.lead_id,
-            "company_name": lead.company_name,
-            "new_buyer_score": new_score,
-            "new_verification_status": new_status,
-            "new_risk_flags": existing_flags,
-        }
+        from app.services.verification_service import run_lead_verification
+        run_lead_verification(db, lead, enrichment=result, run_live_checks=True)
+        applied_to_lead = {"lead_id": lead.lead_id, "company_name": lead.company_name, "new_buyer_score": lead.buyer_score, "new_verification_status": lead.verification_status, "new_risk_flags": lead.risk_flags}
 
     return {
         "domain": result.domain,

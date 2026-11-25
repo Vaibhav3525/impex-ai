@@ -6,6 +6,9 @@ Rate-limited SMTP transmission, hard-bounce auto-suppression, and delivery metri
 """
 
 from datetime import datetime, timezone
+from html import escape
+from app.core.security import reviewer_identity
+from app.services.smtp_service import is_suppressed
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -49,7 +52,7 @@ def _check_suppression(db: Session, email: str):
     if not email:
         return
     norm_email = email.lower().strip()
-    suppressed = db.query(SuppressionList).filter(SuppressionList.email == norm_email).first()
+    suppressed = is_suppressed(db, norm_email)
     if suppressed:
         raise HTTPException(
             status_code=400,
@@ -81,6 +84,11 @@ def compose_outreach_email(
             detail=f"Cannot compose outreach email: Lead '{lead.company_name}' has no business email."
         )
 
+    if lead.verification_status != "Verified" or lead.risk_level != "LOW" or lead.outreach_status in {"Replied", "Opted-Out", "Suppressed", "Bounced"}:
+        raise HTTPException(409, "Outreach requires a verified, low-risk buyer with an active sequence.")
+    existing = db.query(OutreachEmail).filter(OutreachEmail.lead_id == lead.lead_id, OutreachEmail.status.in_(["Queued", "Approved", "Sending", "Sent", "Delivered", "Replied", "Delivery Unknown"])).all()
+    if req.sequence_step != 1 or existing:
+        raise HTTPException(409, "Use the follow-up scheduler for an existing sequence; duplicate introductions are blocked.")
     # Check suppression list
     _check_suppression(db, lead.business_email)
 
@@ -94,6 +102,8 @@ def compose_outreach_email(
     if not prod:
         raise HTTPException(status_code=404, detail=f"Product profile '{req.product_profile_id}' not found.")
 
+    if not prod.is_active or not prod.export_readiness:
+        raise HTTPException(409, "Review the product specifications, pricing units and certifications and mark it export-ready before outreach.")
     # Generate factually grounded email
     composed = compose_grounded_email(
         lead=lead,
@@ -188,17 +198,21 @@ def approve_outreach_email(
     if not email_obj:
         raise HTTPException(status_code=404, detail=f"Outreach email '{email_id}' not found.")
 
-    if email_obj.status == "Sent":
+    if email_obj.status != "Queued":
         raise HTTPException(status_code=400, detail="Cannot edit or approve an email that has already been dispatched.")
 
     if req.subject_override:
         email_obj.subject = req.subject_override
     if req.body_override:
         email_obj.body_text = req.body_override
-        email_obj.body_html = f"<div style='font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;'>{req.body_override}</div>"
+        email_obj.body_html = f"<div style='font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;'>{escape(req.body_override)}</div>"
 
+    _check_suppression(db, email_obj.to_email)
+    approval_lead = db.query(Lead).filter(Lead.lead_id == email_obj.lead_id).first()
+    if not approval_lead or approval_lead.verification_status != "Verified" or approval_lead.risk_level != "LOW" or approval_lead.outreach_status in {"Replied", "Opted-Out", "Suppressed", "Bounced"}:
+        raise HTTPException(409, "Buyer verification or outreach state does not permit approval.")
     email_obj.status = "Approved"
-    email_obj.approved_by = req.reviewer_name
+    email_obj.approved_by = reviewer_identity()
     email_obj.approved_at = datetime.now(timezone.utc)
     email_obj.updated_at = datetime.now(timezone.utc)
 
@@ -226,7 +240,7 @@ def reject_outreach_email(
         raise HTTPException(status_code=404, detail=f"Outreach email '{email_id}' not found.")
 
     email_obj.status = "Rejected"
-    email_obj.rejection_reason = f"Rejected by {req.reviewer_name}: {req.reason}"
+    email_obj.rejection_reason = f"Rejected by {reviewer_identity()}: {req.reason}"
     email_obj.updated_at = datetime.now(timezone.utc)
 
     db.commit()
@@ -254,7 +268,7 @@ def add_to_suppression_list(
 ):
     """Adds an email or domain to the suppression registry."""
     norm_email = supp_in.email.lower().strip()
-    existing = db.query(SuppressionList).filter(SuppressionList.email == norm_email).first()
+    existing = is_suppressed(db, norm_email)
     if existing:
         return existing
 
@@ -292,7 +306,9 @@ def dispatch_single_email(
     Dispatches a single approved email via SMTP.
     Enforces Mode A approval validation, suppression check, and rate caps.
     """
-    res = send_outreach_email(db, email_id, bypass_rate_limits=bypass_rate_limits)
+    if bypass_rate_limits:
+        raise HTTPException(403, "Rate limit bypass is disabled.")
+    res = send_outreach_email(db, email_id)
     if not res.get("success"):
         raise HTTPException(
             status_code=400 if "Violation" in res.get("error", "") or "suppression" in res.get("error", "") else 429,
@@ -310,7 +326,9 @@ def dispatch_approved_batch(
     """
     Batches and dispatches pending approved emails up to remaining hourly/daily quota.
     """
-    return dispatch_approved_emails(db, max_emails=max_emails, bypass_rate_limits=bypass_rate_limits)
+    if bypass_rate_limits:
+        raise HTTPException(403, "Rate limit bypass is disabled.")
+    return dispatch_approved_emails(db, max_emails=max_emails)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

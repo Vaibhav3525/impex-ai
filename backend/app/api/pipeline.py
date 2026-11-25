@@ -24,11 +24,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.core.database import get_db
+from app.core.security import reviewer_identity
+from app.services.payment_risk import enforce_order_confirmation
 from app.models.lead import Lead
 from app.models.deal import Deal, ProformaInvoice
 from app.schemas.lead import LeadResponse
 from app.schemas.deal import (
     PIPELINE_STAGES,
+    PaymentEvidenceRequest,
     DealCreate,
     DealUpdate,
     DealResponse,
@@ -159,6 +162,12 @@ def update_lead_pipeline_stage(
     if not lead:
         raise HTTPException(status_code=404, detail=f"Lead '{lead_id}' not found.")
 
+    if req.new_stage in {"Order Confirmed", "Completed"}:
+        deals = db.query(Deal).filter(Deal.lead_id == lead_id).all()
+        if not deals:
+            raise HTTPException(409, "A commercial deal and payment evidence are required.")
+        for linked_deal in deals:
+            enforce_order_confirmation(linked_deal, lead)
     old_stage = lead.pipeline_stage
     lead.pipeline_stage = req.new_stage
     lead.updated_at = datetime.now(timezone.utc)
@@ -201,6 +210,8 @@ def create_deal(
     deal_dict["deal_id"] = _generate_deal_id()
     
     new_deal = Deal(**deal_dict)
+    if new_deal.stage in {"Order Confirmed", "Completed"}:
+        enforce_order_confirmation(new_deal, lead)
     db.add(new_deal)
     db.commit()
     db.refresh(new_deal)
@@ -255,6 +266,9 @@ def update_deal_stage(
     if not deal:
         raise HTTPException(status_code=404, detail=f"Deal '{deal_id}' not found.")
 
+    if req.new_stage in {"Order Confirmed", "Completed"}:
+        lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+        enforce_order_confirmation(deal, lead)
     old_stage = deal.stage
     deal.stage = req.new_stage
     deal.updated_at = datetime.now(timezone.utc)
@@ -295,7 +309,34 @@ def update_deal(
     for k, v in update_data.items():
         setattr(deal, k, v)
 
+    if {"payment_terms", "quotation_amount", "confirmed_order_value", "currency", "target_price", "required_quantity", "product_name"}.intersection(update_data):
+        deal.payment_evidence_reference = None
+        deal.payment_verified_at = None
+        deal.payment_verified_by = None
+        deal.payment_risk_status = "Pending Review"
+    if deal.stage in {"Order Confirmed", "Completed"}:
+        lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+        enforce_order_confirmation(deal, lead)
     deal.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(deal)
+    return deal
+
+
+@router.post("/deals/{deal_id}/payment-verification", response_model=DealResponse)
+def verify_payment_evidence(deal_id: str, req: PaymentEvidenceRequest, db: Session = Depends(get_db)):
+    deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if not deal:
+        raise HTTPException(404, "Deal not found.")
+    lead = db.query(Lead).filter(Lead.lead_id == deal.lead_id).first()
+    result = assess_deal_financial_risk(deal, lead)
+    if result["status"] != "Approved":
+        raise HTTPException(409, "Resolve buyer and payment risks before recording payment approval.")
+    deal.payment_evidence_reference = req.reference
+    deal.payment_verified_by = reviewer_identity()
+    deal.payment_verified_at = datetime.now(timezone.utc)
+    deal.payment_risk_status = "Approved"
+    deal.payment_risk_notes = req.notes
     db.commit()
     db.refresh(deal)
     return deal

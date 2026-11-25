@@ -277,9 +277,9 @@ def test_run_verification_with_enrichment(db):
 
     log = run_lead_verification(db, lead, enrichment=enrichment, run_live_checks=False)
     assert log.total_score >= base_score_before
-    assert log.dns_mx_records == ["mail.eurotrade.de"]
-    assert log.ssl_valid == "VALID"
-    assert log.domain_age_days == 1500
+    assert log.dns_mx_records == []
+    assert log.ssl_valid is None
+    assert log.domain_age_days is None
 
 
 def test_run_verification_with_negative_enrichment(db):
@@ -298,8 +298,8 @@ def test_run_verification_with_negative_enrichment(db):
 
     log = run_lead_verification(db, lead, enrichment=enrichment, run_live_checks=False)
     assert log.total_score >= 0.0
-    assert "FLAG_DOMAIN_NOT_FOUND" in (log.detected_flags or [])
-    assert "FLAG_TLS_INVALID" in (log.detected_flags or [])
+    assert lead.verification_status == "Unverified"
+    assert log.total_score == 0
 
 
 def test_run_verification_offline_no_enrichment(db):

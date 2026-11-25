@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 class LeadBase(BaseModel):
@@ -62,8 +62,16 @@ class LeadPagination(BaseModel):
     page_size: int
     items: List[LeadResponse]
 
+class EvidenceReview(BaseModel):
+    category: Literal["identity", "relevance", "website", "email", "imports", "independent"]
+    source_url: str = Field(min_length=10, max_length=2000)
+    document_reference: str = Field(min_length=5, max_length=500)
+    finding: str = Field(min_length=20, max_length=4000)
+
 class ManualVerificationRequest(BaseModel):
-    reviewer_name: str = Field(..., description="Name or identifier of the compliance officer / human reviewer")
+    evidence: List[EvidenceReview] = Field(default_factory=list)
+    run_live_checks: bool = False
+    reviewer_name: str = Field("", description="Name or identifier of the compliance officer / human reviewer")
     status_override: Optional[str] = Field(None, description="Override status: 'Verified', 'Partially Verified', 'Rejected', or 'Unverified'")
     notes: str = Field(..., description="Factual audit justification for the manual verification change")
     cleared_flags: Optional[List[str]] = Field(default_factory=list, description="Risk flags cleared after human investigation")

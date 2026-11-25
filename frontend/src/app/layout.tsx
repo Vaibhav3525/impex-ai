@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthGate from "./AuthGate";
 
 export const metadata: Metadata = {
   title: "Global Buyer Acquisition Engine | Indian Exporters",
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="h-full overflow-hidden bg-slate-900 text-slate-100 antialiased">
-        {children}
+        <AuthGate>{children}</AuthGate>
       </body>
     </html>
   );

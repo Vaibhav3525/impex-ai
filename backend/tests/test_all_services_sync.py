@@ -133,8 +133,8 @@ def test_full_suite():
             f"| Score: {created.buyer_score} | Status: {created.verification_status}",
             flush=True,
         )
-        assert created.buyer_score >= 80.0
-        assert created.verification_status == "Verified"
+        assert created.buyer_score == 0.0
+        assert created.verification_status == "Unverified"
 
         print("[4] Testing Analytics Dashboard Aggregates...", flush=True)
         dash = get_dashboard_metrics(db=db)

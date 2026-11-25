@@ -33,6 +33,9 @@ class Deal(Base):
     payment_terms = Column(String(50), nullable=True)
     payment_risk_status = Column(String(50), default="Pending Review") # Approved, Flagged, Under Review, Blocked
     payment_risk_notes = Column(Text, nullable=True)
+    payment_evidence_reference = Column(Text, nullable=True)
+    payment_verified_by = Column(String(100), nullable=True)
+    payment_verified_at = Column(DateTime, nullable=True)
     
     # Commercial Values (Actual Recorded Values only)
     quotation_amount = Column(Float, nullable=True)

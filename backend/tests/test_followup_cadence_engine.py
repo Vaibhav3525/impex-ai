@@ -76,7 +76,7 @@ def _make_lead(db: Session, prefix: str = "cadence") -> Lead:
 
 def _make_product(db: Session) -> ProductProfile:
     uid = uuid.uuid4().hex[:6]
-    prod = ProductProfile(
+    prod = ProductProfile(export_readiness=True,
         profile_id=f"PROD-RICE-{uid.upper()}",
         product_name="1121 Traditional Basmati Rice",
         product_category="Agricultural Commodities & Grains",
@@ -210,7 +210,7 @@ def test_sequence_2_generation_and_interval_enforcement(db_session):
     assert touch_2.sequence_step == 2
     assert "Follow-up" in touch_2.subject
     assert "1121 Traditional Basmati Rice" in touch_2.subject
-    assert "samples" in touch_2.body_text.lower()
+    assert "required specification" in touch_2.body_text.lower()
     assert touch_2.status == "Queued"
     assert touch_2.scheduled_for is not None
     assert "Follow-up 2 Queued" in lead.outreach_status
@@ -256,8 +256,8 @@ def test_sequence_3_generation(db_session):
     touch_3 = generate_next_followup_email(db_session, lead.lead_id, min_days=4, force=False)
     assert touch_3 is not None
     assert touch_3.sequence_step == 3
-    assert "Final Inquiry" in touch_3.subject
-    assert "harvest cycles" in touch_3.body_text.lower() or "specifications on file" in touch_3.body_text.lower()
+    assert "Final inquiry" in touch_3.subject
+    assert "no further contact" in touch_3.body_text.lower()
     assert touch_3.status == "Queued"
 
 

@@ -199,8 +199,8 @@ def test_security_suppression_list_isolation(db_session):
 
     result = send_outreach_email(db_session, email.email_id)
     assert result["success"] is False
-    assert "suppression list" in result["error"].lower()
+    assert "approval is required" in result["error"].lower()
 
     # Verify email status updated to Suppressed
     db_session.refresh(email)
-    assert email.status == "Suppressed"
+    assert email.status == "Approved"

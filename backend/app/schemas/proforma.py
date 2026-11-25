@@ -5,44 +5,52 @@ DGFT / Customs compliant commercial contract quotation for international trade.
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class InvoiceItem(BaseModel):
-    description: str = Field(..., description="Product description and specification grade")
-    hs_code: Optional[str] = Field(None, description="6 or 8-digit Harmonized System code")
-    quantity: float = Field(..., description="Commercial order volume")
-    unit: str = Field("MT", description="Unit of measure (MT, KG, Bags, Cartons)")
-    unit_price: float = Field(..., description="Price per unit in transaction currency")
-    total_amount: float = Field(..., description="Line total amount")
+    description: str = Field(min_length=1, max_length=2000)
+    hs_code: str = Field(pattern=r"^\d{6}(?:\d{2})?$")
+    quantity: float = Field(gt=0, allow_inf_nan=False)
+    unit: str = Field(min_length=1, max_length=20)
+    unit_price: float = Field(gt=0, allow_inf_nan=False)
+    total_amount: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
 
+    @model_validator(mode="after")
+    def validate_total(self):
+        from decimal import Decimal, ROUND_HALF_UP
+        expected = (Decimal(str(self.quantity)) * Decimal(str(self.unit_price))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if self.total_amount is not None and Decimal(str(self.total_amount)).quantize(Decimal("0.01")) != expected:
+            raise ValueError("Line total must equal quantity multiplied by unit price.")
+        self.total_amount = float(expected)
+        return self
 
 class ProformaInvoiceCreate(BaseModel):
-    deal_id: str = Field(..., description="Associated commercial export deal ID")
-    validity_days: int = Field(30, description="Validity period in calendar days")
-    
-    # Exporter / Seller Details (Defaults to compliant Indian exporter template)
-    exporter_name: str = Field("Bharat Agri-Exim Private Limited", description="Exporter company name")
-    exporter_address: str = Field("Nariman Point, Mumbai - 400021, Maharashtra, India", description="Exporter registered address")
-    exporter_iec: Optional[str] = Field("0319876543", description="10-digit DGFT Import Export Code")
-    exporter_gstin: Optional[str] = Field("27AABCB1234F1Z8", description="GST Identification Number")
-    exporter_ad_code: Optional[str] = Field("0210045", description="RBI Authorized Dealer Bank Code")
-    bank_name: Optional[str] = Field("State Bank of India (Overseas Commercial Branch)", description="Bank name")
-    bank_swift_code: Optional[str] = Field("SBININBB001", description="Bank SWIFT/BIC code")
-    bank_account_number: Optional[str] = Field("CA-9876543210", description="Bank Account Number / IBAN")
+    deal_id: str = Field(min_length=1)
+    validity_days: int = Field(30, ge=1, le=365)
+    exporter_name: str = Field(min_length=3, max_length=255)
+    exporter_address: str = Field(min_length=10)
+    exporter_iec: str = Field(pattern=r"^[A-Za-z0-9]{10}$")
+    exporter_gstin: str = Field(pattern=r"^[A-Za-z0-9]{15}$")
+    exporter_ad_code: str = Field(min_length=7, max_length=14)
+    bank_name: str = Field(min_length=3)
+    bank_swift_code: str = Field(pattern=r"^[A-Z0-9]{8}(?:[A-Z0-9]{3})?$")
+    bank_account_number: str = Field(min_length=8, max_length=50)
+    country_of_origin: str = Field(min_length=2)
+    port_of_loading: str = Field(min_length=3)
+    destination_port: str = Field(min_length=3)
+    incoterms: str = Field(pattern=r"^(FOB|CIF|CFR|EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS)$")
+    payment_terms: str = Field(min_length=5)
+    items: List[InvoiceItem] = Field(min_length=1, max_length=100)
+    freight_insurance: float = Field(0.0, ge=0, allow_inf_nan=False)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    notes: Optional[str] = None
 
-    # Shipping Specifications
-    country_of_origin: str = Field("India", description="Country of origin")
-    port_of_loading: str = Field("Nhava Sheva (JNPT), Mumbai", description="Indian seaport/airport of departure")
-    destination_port: Optional[str] = Field(None, description="Buyer's port of arrival")
-    incoterms: str = Field("FOB", description="Incoterms 2020 (FOB, CIF, CFR, EXW)")
-    payment_terms: Optional[str] = Field(None, description="Agreed payment terms (LC at Sight, 30% Advance, etc.)")
-
-    # Line Items & Charges
-    items: Optional[List[InvoiceItem]] = Field(None, description="Line item specifications")
-    freight_insurance: float = Field(0.0, description="Freight and marine insurance charges if CIF/CFR")
-    currency: str = Field("USD", description="Currency (USD, EUR, GBP, AED)")
-    notes: Optional[str] = Field(None, description="Special commercial stipulations, packaging or inspection notes")
+    @model_validator(mode="after")
+    def reject_template_details(self):
+        if self.exporter_iec == "0319876543" or self.exporter_gstin == "27AABCB1234F1Z8" or self.bank_account_number == "CA-9876543210":
+            raise ValueError("Replace template exporter and bank identifiers with your reviewed business details.")
+        return self
 
 
 class ProformaInvoiceResponse(BaseModel):

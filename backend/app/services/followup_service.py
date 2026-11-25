@@ -26,6 +26,7 @@ from app.models.lead import Lead
 from app.models.product_profile import ProductProfile
 from app.models.outreach import OutreachEmail, SuppressionList
 from app.services.email_composer import compose_grounded_email
+from app.services.smtp_service import is_suppressed
 
 DEFAULT_CADENCE_INTERVAL_DAYS = 4
 MAX_CADENCE_STEPS = 3
@@ -60,8 +61,10 @@ def is_lead_eligible_for_followup(lead: Lead, db: Session) -> Tuple[bool, str]:
 
     norm_email = lead.business_email.lower().strip()
 
+    if lead.verification_status != "Verified" or lead.risk_level != "LOW":
+        return False, "Buyer requires evidence review before outreach."
     # 1. Check Suppression List
-    suppressed = db.query(SuppressionList).filter(SuppressionList.email == norm_email).first()
+    suppressed = is_suppressed(db, norm_email)
     if suppressed:
         return False, f"Recipient email '{norm_email}' is in suppression list ({suppressed.reason})."
 
@@ -139,6 +142,7 @@ def generate_next_followup_email(
     min_days: int = DEFAULT_CADENCE_INTERVAL_DAYS,
     force: bool = False,
     custom_instructions: Optional[str] = None,
+    use_ai: bool = True,
 ) -> Optional[OutreachEmail]:
     """
     Generates the next sequential grounded follow-up email (Touch 2 or Touch 3) for an eligible lead.
@@ -188,34 +192,8 @@ def generate_next_followup_email(
         if not product and latest_sent.product_id.isdigit():
             product = db.query(ProductProfile).filter(ProductProfile.id == int(latest_sent.product_id)).first()
 
-    if not product:
-        # Fallback to lead product category match or first active product
-        product = db.query(ProductProfile).filter(
-            ProductProfile.product_name.ilike(f"%{lead.product_category}%")
-        ).first()
-
-    if not product:
-        product = db.query(ProductProfile).first()
-
-    if not product:
-        # Create standard verified export profile if none exists
-        product = ProductProfile(
-            profile_id="PROD-STD-001",
-            product_name=lead.product_category or "Agricultural Commodities",
-            hs_code="10063020",
-            origin_country="India",
-            certifications=["APEDA", "FSSAI", "ISO 22000"],
-            grade="Export Grade 1",
-            packaging="50kg Master PP/Jute Bags",
-            incoterms="CIF",
-            preferred_payment_terms="100% Irrevocable LC at Sight",
-            target_price_min=1050.0,
-            target_price_max=1250.0,
-            currency="USD",
-        )
-        db.add(product)
-        db.commit()
-        db.refresh(product)
+    if not product or not product.is_active or not product.export_readiness:
+        return None  # An explicit active product is required; never invent capabilities.
 
     # Compose strictly grounded follow-up email
     composed = compose_grounded_email(
@@ -223,6 +201,7 @@ def generate_next_followup_email(
         product=product,
         sequence_step=next_step,
         custom_instructions=custom_instructions,
+        use_ai=use_ai,
     )
 
     approval_mode = "Automated" if (settings.ENABLE_AUTO_FOLLOWUPS and settings.DEFAULT_OUTREACH_MODE == "automated") else "Assisted"

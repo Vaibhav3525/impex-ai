@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import ReviewCenter from "./ReviewCenter";
+import AutomationPanel from "./AutomationPanel";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -66,113 +68,6 @@ interface Lead {
   };
 }
 
-const INITIAL_LEADS: Lead[] = [
-  {
-    lead_id: "LID-UAE-ALMAYA",
-    company_name: "Al Maya Trading Co LLC",
-    country: "United Arab Emirates",
-    city: "Dubai",
-    website: "https://www.almaya.ae",
-    product_category: "Basmati Rice, Spices & Foodstuffs",
-    contact_name: "Kamal Vachani",
-    job_title: "Group Director (Procurement)",
-    business_email: "procurement@almaya.ae",
-    phone_number: "+971 4 347 3500",
-    source: "Dubai Chamber of Commerce & APEDA Directory",
-    source_url: "https://www.dubaichamber.com/en/business/directory/",
-    import_evidence: "Major supermarket and wholesale distributor importing 500+ containers of FMCG, basmati rice, and spices annually from India.",
-    verification_status: "Verified",
-    buyer_score: 96.0,
-    risk_flags: [],
-    pipeline_stage: "Quotation Prepared",
-    notes: "Requires 1121 Steam Basmati Rice in 40kg PP bags with private label packaging. Payment 100% LC at sight.",
-    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 11 }
-  },
-  {
-    lead_id: "LID-UAE-LULU",
-    company_name: "Lulu Group International",
-    country: "United Arab Emirates",
-    city: "Abu Dhabi",
-    website: "https://www.lulugroupinternational.com",
-    product_category: "Agricultural Commodities, Spices & Fruits",
-    contact_name: "Salim M.A.",
-    job_title: "Director of Global Sourcing",
-    business_email: "sourcing@lulugroup.com",
-    phone_number: "+971 2 418 4500",
-    source: "UAE Ministry of Economy Trade Register",
-    source_url: "https://www.moec.gov.ae/en/trade-directory",
-    import_evidence: "Operates 250+ hypermarkets across GCC; direct importer of Indian long-grain rice, fresh vegetables, and processed spices.",
-    verification_status: "Verified",
-    buyer_score: 98.0,
-    risk_flags: [],
-    pipeline_stage: "Verified Candidate",
-    notes: "Bulk centralized procurement hub for GCC retail stores. High volume buyer.",
-    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 13 }
-  },
-  {
-    lead_id: "LID-UK-WESTMILL",
-    company_name: "Westmill Foods Ltd (Associated British Foods)",
-    country: "United Kingdom",
-    city: "Enfield, London",
-    website: "https://www.westmill.co.uk",
-    product_category: "Basmati Rice, Atta Flour, Spices & Noodles",
-    contact_name: "Oliver Jackson",
-    job_title: "Category Sourcing Manager (Rice & Grains)",
-    business_email: "commercial@westmill.co.uk",
-    phone_number: "+44 20 8344 1800",
-    source: "High Commission of India, London (Commercial Wing)",
-    source_url: "https://www.hcilondon.gov.in/page/commercial-trade-directory/",
-    import_evidence: "One of Europe's largest ethnic food manufacturers (brands: Elephant Atta, Tolly Boy, Rajah Spices); major direct importer at London Gateway port.",
-    verification_status: "Verified",
-    buyer_score: 98.0,
-    risk_flags: [],
-    pipeline_stage: "Order Confirmed",
-    notes: "Confirmed order of 350 MT Pusa Basmati Rice. Irrevocable LC at Sight issued by Barclays Bank UK.",
-    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 13 }
-  },
-  {
-    lead_id: "LID-DE-EURYZA",
-    company_name: "Euryza GmbH (Rickmers Reismühle)",
-    country: "Germany",
-    city: "Hamburg",
-    website: "https://www.euryza.de",
-    product_category: "Basmati Rice & Specialty Grains",
-    contact_name: "Dr. Jens Kramer",
-    job_title: "Director of Commodity Purchasing",
-    business_email: "sourcing@euryza.de",
-    phone_number: "+49 40 7510 900",
-    source: "Hamburg Chamber of Commerce & European Rice Federation",
-    source_url: "https://www.hk24.de/en/business-directory",
-    import_evidence: "Major rice milling and packaging group in Northern Europe; regular ocean container shipments through Port of Hamburg.",
-    verification_status: "Verified",
-    buyer_score: 97.0,
-    risk_flags: [],
-    pipeline_stage: "Payment Verification",
-    notes: "250 MT Basmati Rice order in verification stage. Letter of Credit confirmed by Deutsche Bank AG.",
-    scores_breakdown: { identity: 20, relevance: 20, website: 15, email: 15, import_evidence: 15, independent: 12 }
-  },
-  {
-    lead_id: "LID-USA-QUICKTRADES",
-    company_name: "Suspicious Quick Trades LLC",
-    country: "United States",
-    city: "Miami",
-    website: "http://quicktrades-temp.biz",
-    product_category: "Any Export Commodity",
-    contact_name: "John Anonymous",
-    job_title: "Agent",
-    business_email: "quickbuyer2026@gmail.com",
-    phone_number: "+1 305 000 0000",
-    source: "Unverified Web Forum",
-    source_url: "http://trade-forum-leads.example.com",
-    import_evidence: null,
-    verification_status: "Rejected",
-    buyer_score: 25.0,
-    risk_flags: ["FLAG_FREE_EMAIL_DOMAIN", "FLAG_NO_DIRECT_IMPORT_EVIDENCE", "FLAG_UPFRONT_FEE_SOLICITATION"],
-    pipeline_stage: "Lost / Rejected",
-    notes: "CRITICAL FRAUD SIGNAL: Demands upfront supplier registration fee of $500 before sending purchase order. Outreach permanently blocked.",
-    scores_breakdown: { identity: 5, relevance: 5, website: 5, email: 0, import_evidence: 0, independent: 10 }
-  }
-];
 
 const PIPELINE_STAGES = [
   "Discovered",
@@ -213,17 +108,17 @@ export default function Dashboard() {
     specifications: "",
     grade: "",
     origin_country: "India",
-    available_quantity: "200 MT / month",
-    packaging: "25kg / 50kg PP Bags",
-    moq: "1x20ft Container (20 MT)",
-    target_price_min: 1200,
-    target_price_max: 1450,
+    available_quantity: "",
+    packaging: "",
+    moq: "",
+    target_price_min: 0,
+    target_price_max: 0,
     currency: "USD",
     incoterms: "FOB",
     preferred_payment_terms: "100% LC at Sight / 30% Advance + 70% against BL",
     target_countries: "United Arab Emirates, Saudi Arabia, Germany, United Kingdom, United States",
     excluded_countries: "",
-    certifications: "APEDA, FSSAI, ISO 22000, HACCP",
+    certifications: "",
   });
 
   const loadProducts = async () => {
@@ -285,7 +180,7 @@ export default function Dashboard() {
         certifications: productForm.certifications
           ? productForm.certifications.split(",").map(s => s.trim()).filter(Boolean)
           : [],
-        export_readiness: true,
+        export_readiness: false,
         is_active: true,
       };
       const created = await api.createProduct(payload);
@@ -314,11 +209,12 @@ export default function Dashboard() {
       console.error("Delete product error:", err);
     }
   };
-  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("ALL");
   const [selectedTier, setSelectedTier] = useState("ALL");
+  const [connectionError, setConnectionError] = useState("");
   const [liveConnected, setLiveConnected] = useState(false);
   const [totalDbCount, setTotalDbCount] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -365,26 +261,17 @@ export default function Dashboard() {
     try {
       const res = await api.getLeads({ page, page_size: 100 });
       const rawItems = Array.isArray(res) ? res : res.items || [];
-      if (rawItems.length > 0) {
-        const formatted = rawItems.map((l: any) => ({
-          ...l,
-          risk_flags: l.risk_flags || [],
-          scores_breakdown: l.scores_breakdown || {
-            identity: Math.round(l.buyer_score * 0.2),
-            relevance: Math.round(l.buyer_score * 0.2),
-            website: Math.round(l.buyer_score * 0.15),
-            email: Math.round(l.buyer_score * 0.15),
-            import_evidence: Math.round(l.buyer_score * 0.15),
-            independent: Math.round(l.buyer_score * 0.15),
-          }
-        }));
-        setLeads(formatted);
-        setTotalDbCount(res.total ?? formatted.length);
-        setCurrentPage(page);
-        setLiveConnected(true);
-      }
-    } catch (err) {
-      console.info("Error fetching live leads:", err);
+      const formatted = rawItems.map((lead: any) => ({ ...lead, risk_flags: lead.risk_flags || [] }));
+      setLeads(formatted);
+      setTotalDbCount(res.total ?? formatted.length);
+      setCurrentPage(page);
+      setLiveConnected(true);
+      setConnectionError("");
+    } catch (err: any) {
+      setLiveConnected(false);
+      setConnectionError(err.message || "Unable to connect to the server.");
+      setLeads([]);
+      setTotalDbCount(0);
     } finally {
       setLoadingLeads(false);
     }
@@ -615,11 +502,11 @@ export default function Dashboard() {
   }, []);
 
   // Metrics
-  const totalLeads = leads.length;
-  const verifiedCount = leads.filter(l => l.verification_status === "Verified").length;
-  const highPriorityCount = leads.filter(l => l.buyer_score >= 80).length;
-  const potentialCount = leads.filter(l => l.buyer_score >= 60 && l.buyer_score < 80).length;
-  const highRiskCount = leads.filter(l => l.buyer_score < 60 || l.risk_flags.length > 0).length;
+  const totalLeads = totalDbCount;
+  const verifiedCount = dashMetrics?.summary?.verified_candidates ?? leads.filter(l => l.verification_status === "Verified").length;
+  const highPriorityCount = dashMetrics?.qualification_tiers?.high_priority_80_100 ?? 0;
+  const potentialCount = dashMetrics?.qualification_tiers?.potential_candidates_60_79 ?? 0;
+  const highRiskCount = dashMetrics?.summary?.high_risk_count ?? 0;
   const queuedOutreachCount = leads.filter(l => l.pipeline_stage === "Outreach Approved").length;
 
   const filteredLeads = leads.filter(l => {
@@ -791,11 +678,11 @@ export default function Dashboard() {
               {activeTab === "pipeline" && "15-Stage CRM Deal Pipeline"}
               {activeTab === "queue" && "Assisted Outreach Approval Queue (Mode A)"}
               {activeTab === "risk" && "Transaction & Payment Risk Guardian"}
-              {activeTab === "analytics" && "Executive Performance & DGFT Audit Analytics"}
+              {activeTab === "analytics" && "Executive Performance & Evidence Analytics"}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               {activeTab === "catalog"
-                ? "Configure export specifications & run 100-point matching algorithms against 42 verified international buyers"
+                ? "Review your declared export specifications and match buyers awaiting evidence review"
                 : "Primary KPI: Verified Buyers → Qualified Inquiries → Quotations → Confirmed Orders"}
             </p>
           </div>
@@ -818,7 +705,7 @@ export default function Dashboard() {
             ) : (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
                 <span className="w-2 h-2 rounded-full bg-blue-400"></span>
-                <span>Demo Mode</span>
+                <span>{loadingLeads ? "Connecting…" : "Disconnected"}</span>
               </div>
             )}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
@@ -828,6 +715,9 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {connectionError && <p role="alert" className="mx-8 mt-4 rounded-lg border border-rose-700 p-3 text-sm text-rose-300">{connectionError} <button onClick={() => fetchLeads(currentPage)} className="underline">Retry connection</button></p>}
+        <ReviewCenter leads={leads} products={products} onSaved={async () => { await Promise.all([fetchLeads(currentPage), loadAnalytics(), loadProducts(), loadQueue(queueStatusFilter), loadKanban()]); }} />
+        <AutomationPanel products={products} />
         {/* Action feedback alert banner */}
         {actionSuccessMsg && (
           <div className="mx-8 mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 text-xs font-semibold text-emerald-300 flex items-center justify-between shadow-lg">
@@ -1252,7 +1142,7 @@ export default function Dashboard() {
                   <div className="p-12 text-center space-y-3">
                     <RefreshCw className="h-8 w-8 text-emerald-400 animate-spin mx-auto" />
                     <p className="text-sm font-semibold text-slate-200">
-                      Evaluating 42 verified buyers against {selectedProduct.product_name}...
+                      Evaluating loaded buyer records against {selectedProduct.product_name}...
                     </p>
                     <p className="text-xs text-slate-500 max-w-md mx-auto">
                       Executing 5-factor compatibility model: Product Relevance (30), Country Alignment (25), Verified Import Evidence (20), Contact Quality (15), and Verification Standing (10).
@@ -1527,7 +1417,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between text-xs text-slate-400 px-2 py-2 border-t border-slate-800">
               <div>
                 Showing <strong className="text-white">{filteredLeads.length}</strong> loaded leads
-                {totalDbCount > 0 && <span> of <strong className="text-emerald-400">{totalDbCount.toLocaleString()}</strong> verified buyer records in database</span>}
+                {totalDbCount > 0 && <span> of <strong className="text-emerald-400">{totalDbCount.toLocaleString()}</strong> buyer records in database</span>}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -2099,7 +1989,7 @@ export default function Dashboard() {
                   ${execReport?.financial_performance?.total_quotations_value_usd?.toLocaleString() ?? "0"}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  Active Proforma Invoices Issued
+                  Proforma Invoice Drafts
                 </div>
               </div>
 
@@ -2147,7 +2037,7 @@ export default function Dashboard() {
                   className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-600/20"
                 >
                   <FileCheck className="h-3.5 w-3.5" />
-                  <span>Download DGFT Audit CSV</span>
+                  <span>Download Buyer Audit CSV</span>
                 </a>
               </div>
 
@@ -2313,8 +2203,8 @@ export default function Dashboard() {
 
             {/* Compliance Invariant Footer */}
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-400 text-xs leading-relaxed">
-              <strong className="text-slate-300">PRD Compliance & Zero Fabrication Standard:</strong> This system strictly guarantees zero data fabrication. 
-              Realized revenue accounts only for confirmed purchase orders. Trade statistics are kept strictly partitioned from buyer records, and all outbound outreach requires explicit Mode A compliance signoff.
+              <strong className="text-slate-300">Evidence review:</strong> Imported claims require documentary review before outreach.
+              Confirmed order values reflect recorded payment evidence. Review commercial and shipping documents before use.
             </div>
           </div>
         )}
