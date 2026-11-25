@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, inspect, Table, Column, String
+from sqlalchemy import create_engine, inspect, Table, Column, String, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
 
@@ -45,10 +45,10 @@ def init_db():
         conn.exec_driver_sql("INSERT INTO dispatch_lock (id, version) VALUES (1, 0) ON CONFLICT (id) DO NOTHING")
         conn.exec_driver_sql("INSERT INTO automation_state (id, enabled) VALUES (1, false) ON CONFLICT (id) DO NOTHING")
         if not conn.exec_driver_sql("SELECT name FROM maintenance_state WHERE name='security_revision_3'").first():
-            conn.exec_driver_sql("""UPDATE leads SET verification_status='Rejected', buyer_score=0,
+            conn.execute(text("""UPDATE leads SET verification_status='Rejected', buyer_score=0,
                 risk_level='CRITICAL', risk_flags='[\"FLAG_SYNTHETIC_RECORD\"]',
                 outreach_status='Suppressed', pipeline_stage='Lost / Rejected'
-                WHERE company_name LIKE '% Import Hub % #%'""")
+                WHERE company_name LIKE :synthetic_name"""), {"synthetic_name": "% Import Hub % #%"})
             conn.exec_driver_sql("UPDATE leads SET pipeline_stage='Verification Pending' WHERE verification_status='Unverified' AND pipeline_stage NOT IN ('Discovered','Lost / Rejected')")
             conn.exec_driver_sql("INSERT INTO maintenance_state (name) VALUES ('security_revision_3')")
         if conn.exec_driver_sql("SELECT name FROM maintenance_state WHERE name='security_revision_2'").first():
